@@ -1,0 +1,54 @@
+// Archivo temporal para corregir el código
+// Quitar la duplicación de onConnectionChanged
+// Y corregir la declaración de _customPaperWidth
+
+var defaultPrinterType = PrinterType.bluetooth;
+var _isBle = false;
+var _reconnect = false;
+var _isConnected = false;
+var printerManager = PrinterManager.instance;
+var devices = <BluetoothPrinter>[];
+// Lista de impresoras virtuales a ignorar
+final List<String> _virtualPrintersToIgnore = [
+  'microsoft print to pdf',
+  'microsoft xps document writer',
+  'onenote',
+  'fax',
+  'onenote for windows',
+  'onenote (desktop)',
+  'send to onenote',
+  'printer to pdf',
+  'pdf creator',
+  'adobe pdf',
+  'doro pdf writer',
+  'print to pdf',
+  'foxit pdf',
+  'pdf printer',
+  'pdf24',
+  'nitro pdf',
+  'cutepdf',
+  'bullzip',
+  'xps',
+  'document writer',
+  'virtual printer',
+];
+StreamSubscription<PrinterDevice>? _subscription;
+StreamSubscription<BTStatus>? _subscriptionBtStatus;
+StreamSubscription<USBStatus>? _subscriptionUsbStatus;
+BTStatus _currentStatus = BTStatus.none;
+// Usado en _subscriptionUsbStatus para mantener el estado de la conexión USB
+USBStatus _currentUsbStatus = USBStatus.none;
+List<int>? pendingTask; // Variables para configuración de impresora de red
+String _ipAddress = ''; // Usado en setNetworkPrinter y selectNetworkPrinter
+String _port = '9100'; // Puerto por defecto para impresión de red
+BluetoothPrinter? selectedPrinter;
+// Tamaño de papel detectado
+PaperSize _detectedPaperSize = PaperSize.mm80;
+// Variable para almacenar el ancho personalizado del papel en mm
+int _customPaperWidth = 0;
+// Indica si se está usando un tamaño de papel personalizado
+bool _usingCustomPaperSize = false;
+// Timer para verificar automáticamente el estado de la impresora
+Timer? _connectionCheckTimer;
+// Callback para notificar cambios en el estado de conexión
+Function(bool isConnected, String? printerName)? onConnectionChanged;
