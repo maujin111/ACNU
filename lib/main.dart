@@ -22,12 +22,19 @@ import 'package:tray_manager/tray_manager.dart'
     if (dart.library.html) 'package:anfibius_uwu/platform_stubs.dart';
 import 'package:window_manager/window_manager.dart'
     if (dart.library.html) 'package:anfibius_uwu/platform_stubs.dart';
+
 import 'package:launch_at_startup/launch_at_startup.dart'
     if (dart.library.html) 'package:anfibius_uwu/platform_stubs.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart'
     if (dart.library.html) 'package:anfibius_uwu/platform_stubs.dart';
 
 void main(List<String> args) async {
+  // Capturar errores no manejados
+  FlutterError.onError = (FlutterErrorDetails details) {
+    print('Flutter Error: ${details.exception}');
+    print('StackTrace: ${details.stack}');
+  };
+
   WidgetsFlutterBinding.ensureInitialized();
 
   // Solo ejecutar funcionalidades de escritorio en plataformas compatibles
@@ -50,58 +57,58 @@ void main(List<String> args) async {
     }
 
     await windowManager.ensureInitialized();
+    await windowManager.setPreventClose(true);
 
     // Configurar inicio automático con Windows
-    PackageInfo packageInfo = await PackageInfo.fromPlatform();
-    launchAtStartup.setup(
-      appName: packageInfo.appName,
-      appPath: '', // La ruta se configura automáticamente en Windows
-    );
-
-    WindowOptions windowOptions = const WindowOptions(
-      size: Size(800, 600),
-      center: true,
-      skipTaskbar: false,
-      title: "Anfibius Connect Nexus Utility",
-      minimumSize: Size(400, 300),
-    );
-
-    // Configurar para que no se cierre la aplicación al cerrar la ventana
-    await windowManager.setPreventClose(true);
-    await windowManager.setMinimizable(true);
-
-    windowManager.waitUntilReadyToShow(windowOptions, () async {
-      await windowManager.show();
-      await windowManager.focus();
-    });
+    try {
+      PackageInfo packageInfo = await PackageInfo.fromPlatform();
+      launchAtStartup.setup(
+        appName:
+            packageInfo.appName.isNotEmpty
+                ? packageInfo.appName
+                : 'Anfibius Connect Nexus Utility',
+        appPath: Platform.resolvedExecutable,
+      );
+      print('✅ Launch at startup configurado');
+    } catch (e) {
+      print('❌ Error configurando launch at startup: $e');
+    }
 
     // Configurar el icono de la bandeja del sistema
     try {
       await trayManager.setIcon(
         'assets/icon/app_icon.ico', // Usamos el icono .ico para Windows
       );
-    } catch (e) {
-      // Si no existe el icono .ico, usaremos el .png como respaldo
-      await trayManager.setIcon('assets/icon/app_icon.ico');
-    }
 
-    await trayManager.setToolTip('Anfibius Connect Nexus Utility');
-    await trayManager.setContextMenu(
-      Menu(
-        items: [
-          MenuItem(key: 'show', label: 'Mostrar'),
-          MenuItem.separator(),
-          MenuItem(key: 'settings', label: 'Configuración'),
-          MenuItem(key: 'printers', label: 'Impresoras'),
-          MenuItem.separator(),
-          MenuItem(key: 'exit', label: 'Salir'),
-        ],
-      ),
-    );
+      await trayManager.setToolTip('Anfibius Connect Nexus Utility');
+      await trayManager.setContextMenu(
+        Menu(
+          items: [
+            MenuItem(key: 'show', label: 'Mostrar'),
+            MenuItem.separator(),
+            MenuItem(key: 'settings', label: 'Configuración'),
+            MenuItem(key: 'printers', label: 'Impresoras'),
+            MenuItem.separator(),
+            MenuItem(key: 'exit', label: 'Salir'),
+          ],
+        ),
+      );
+      print('✅ Tray manager configurado correctamente');
+    } catch (e) {
+      print('❌ Error configurando tray manager: $e');
+      // Continuar sin tray manager si hay error
+    }
   }
 
-  await NotificationsService().init();
+  try {
+    await NotificationsService().init();
+    print('✅ NotificationsService inicializado');
+  } catch (e) {
+    print('❌ Error inicializando NotificationsService: $e');
+    // Continuar sin notificaciones si hay error
+  }
 
+  print('🚀 Iniciando aplicación...');
   runApp(const MyApp());
 }
 
@@ -192,8 +199,7 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage>
-    with TrayListener, WindowListener {
+class _MyHomePageState extends State<MyHomePage> with TrayListener, WindowListener {
   WindowController? window;
   final Map<int, WindowController> _childWindows = {};
 
@@ -257,24 +263,20 @@ class _MyHomePageState extends State<MyHomePage>
   }
 
   @override
-  void onWindowClose() async {
-    if (!_isDesktop()) return;
-
-    bool isPreventClose = await windowManager.isPreventClose();
-    if (isPreventClose) {
-      minimizeToTray(); // Minimiza a la bandeja del sistema
-    }
+  void onWindowClose() {
+    minimizeToTray();
   }
 
   void minimizeToTray() async {
     if (!_isDesktop()) return;
 
     await windowManager.hide();
-    // Opcional: mostrar notificación cuando se minimiza a la bandeja
+    // Mostrar notificación cuando se minimiza a la bandeja
     NotificationsService().showNotification(
       id: 1, // ID único para esta notificación
-      title: 'Anfibius Web Connect Utility',
-      body: 'La aplicación sigue ejecutándose en segundo plano',
+      title: 'Anfibius Connect Nexus Utility',
+      body:
+          'La aplicación continúa ejecutándose en segundo plano. Haz clic en el ícono de la bandeja para mostrarla nuevamente.',
     );
   }
 
@@ -282,9 +284,8 @@ class _MyHomePageState extends State<MyHomePage>
   void onTrayIconMouseDown() {
     if (!_isDesktop()) return;
 
-    windowManager
-        .show(); // Muestra la ventana al hacer clic en el ícono de la bandeja
-    windowManager.focus(); // Aseguramos que la ventana tome el foco
+    windowManager.show();
+    windowManager.focus();
   }
 
   @override
@@ -320,6 +321,7 @@ class _MyHomePageState extends State<MyHomePage>
         break;
       case 'exit':
         windowManager.destroy();
+        SystemNavigator.pop();
         break;
     }
   }

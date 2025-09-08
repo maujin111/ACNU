@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_pos_printer_platform_image_3/flutter_pos_printer_platform_image_3.dart';
+import 'package:flutter_esc_pos_utils/flutter_esc_pos_utils.dart';
 
 class BluetoothPrinter {
   int? id;
@@ -226,5 +227,94 @@ class ConfigService {
     for (final key in keys) {
       await prefs.remove(key);
     }
+  }
+
+  // Constantes para tamaños de papel por impresora
+  static const String _printerPaperSizeKey = 'printer_paper_size';
+
+  // Guardar tamaño de papel para una impresora específica
+  static Future<void> savePrinterPaperSize(
+    String printerName,
+    PaperSize paperSize,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = '${_printerPaperSizeKey}_$printerName';
+
+    // Convertir PaperSize a string para guardar
+    String paperSizeString;
+    if (paperSize == PaperSize.mm58) {
+      paperSizeString = 'mm58';
+    } else if (paperSize == PaperSize.mm72) {
+      paperSizeString = 'mm72';
+    } else if (paperSize == PaperSize.mm80) {
+      paperSizeString = 'mm80';
+    } else {
+      paperSizeString = 'mm80'; // por defecto
+    }
+
+    await prefs.setString(key, paperSizeString);
+  }
+
+  // Cargar tamaño de papel para una impresora específica
+  static Future<PaperSize?> loadPrinterPaperSize(String printerName) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = '${_printerPaperSizeKey}_$printerName';
+    final paperSizeString = prefs.getString(key);
+
+    if (paperSizeString != null) {
+      switch (paperSizeString) {
+        case 'mm58':
+          return PaperSize.mm58;
+        case 'mm72':
+          return PaperSize.mm72;
+        case 'mm80':
+          return PaperSize.mm80;
+        default:
+          return PaperSize.mm80;
+      }
+    }
+    return null;
+  }
+
+  // Cargar todos los tamaños de papel guardados
+  static Future<Map<String, PaperSize>> loadAllPrinterPaperSizes() async {
+    final prefs = await SharedPreferences.getInstance();
+    final keys =
+        prefs
+            .getKeys()
+            .where((key) => key.startsWith(_printerPaperSizeKey))
+            .toList();
+
+    final Map<String, PaperSize> paperSizes = {};
+
+    for (final key in keys) {
+      final printerName = key.replaceFirst('${_printerPaperSizeKey}_', '');
+      final paperSizeString = prefs.getString(key);
+
+      if (paperSizeString != null) {
+        switch (paperSizeString) {
+          case 'mm58':
+            paperSizes[printerName] = PaperSize.mm58;
+            break;
+          case 'mm72':
+            paperSizes[printerName] = PaperSize.mm72;
+            break;
+          case 'mm80':
+            paperSizes[printerName] = PaperSize.mm80;
+            break;
+          default:
+            paperSizes[printerName] = PaperSize.mm80;
+        }
+      }
+    }
+
+    return paperSizes;
+  }
+
+  // Remover tamaño de papel de una impresora
+  static Future<void> removePrinterPaperSize(String printerName) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = '${_printerPaperSizeKey}_$printerName';
+    await prefs.remove(key);
   }
 }

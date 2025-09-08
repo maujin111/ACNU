@@ -111,14 +111,50 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
                 ),
                 ListTile(
                   title: const Text('Iniciar con Windows'),
-                  subtitle: const Text(
-                    'La aplicación se iniciará automáticamente al arrancar el sistema',
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'La aplicación se iniciará automáticamente al arrancar el sistema',
+                      ),
+                      if (startupService.lastError != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4.0),
+                          child: Text(
+                            'Error: ${startupService.lastError}',
+                            style: const TextStyle(
+                              color: Colors.red,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                  trailing: Switch(
-                    value: startupService.isEnabled,
-                    onChanged: (value) async {
-                      await startupService.toggleStartupSetting();
-                    },
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (startupService.isInitialized)
+                        Switch(
+                          value: startupService.isEnabled,
+                          onChanged: (value) async {
+                            await startupService.toggleStartupSetting();
+                          },
+                        )
+                      else
+                        const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.refresh, size: 20),
+                        onPressed: () async {
+                          await startupService.checkCurrentState();
+                        },
+                        tooltip: 'Verificar estado actual',
+                      ),
+                    ],
                   ),
                 ),
                 const Divider(),

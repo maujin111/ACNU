@@ -125,7 +125,7 @@ class _DispositivosState extends State<Dispositivos> {
       } else if (printerName != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Impresora ${printerName} desconectada'),
+            content: Text('Impresora $printerName desconectada'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 2),
           ),
@@ -445,7 +445,7 @@ class _DispositivosState extends State<Dispositivos> {
                                 ],
                               ),
                             );
-                          }).toList(),
+                          }),
                         ],
                       ),
                     ),

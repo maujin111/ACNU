@@ -61,7 +61,7 @@ class PrintJobService {
       // Imprimir el mensaje para depuración (limitado a 200 caracteres)
       final previewMessage =
           jsonMessage.length > 200
-              ? jsonMessage.substring(0, 200) + '...'
+              ? '${jsonMessage.substring(0, 200)}...'
               : jsonMessage;
       print('📥 Recibido mensaje para impresión: $previewMessage');
 
@@ -217,12 +217,12 @@ class PrintJobService {
       for (var detalle in comandaData.detalles) {
         bytes += generator.row([
           PosColumn(
-            text: '${detalle.cant.toStringAsFixed(2)}',
+            text: detalle.cant.toStringAsFixed(2),
             width: 2,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
           PosColumn(
-            text: '${detalle.umedNombre ?? ""}',
+            text: detalle.umedNombre ?? "",
             width: 2,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
@@ -396,7 +396,7 @@ class PrintJobService {
 
       // Encabezado del sorteo
       bytes += generator.text(
-        '${sorteoData.evento}',
+        sorteoData.evento,
         styles: baseStyle.copyWith(
           align: PosAlign.center,
           bold: true,
@@ -593,7 +593,7 @@ class PrintJobService {
       for (var detalle in prefacturaData.detalles) {
         bytes += generator.row([
           PosColumn(
-            text: '${detalle.cantidad.toStringAsFixed(2)}',
+            text: detalle.cantidad.toStringAsFixed(2),
             width: 2,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
@@ -603,12 +603,12 @@ class PrintJobService {
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
           PosColumn(
-            text: '${detalle.valorUnitario.toStringAsFixed(2)}',
+            text: detalle.valorUnitario.toStringAsFixed(2),
             width: 2,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
           PosColumn(
-            text: '${detalle.total.toStringAsFixed(2)}',
+            text: detalle.total.toStringAsFixed(2),
             width: 3,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
@@ -635,7 +635,7 @@ class PrintJobService {
           styles: baseStyle.copyWith(align: PosAlign.left),
         ),
         PosColumn(
-          text: '${prefacturaData.sinIva.toStringAsFixed(2)}',
+          text: prefacturaData.sinIva.toStringAsFixed(2),
           width: 3,
           styles: baseStyle.copyWith(align: PosAlign.left),
         ),
@@ -648,7 +648,7 @@ class PrintJobService {
           styles: baseStyle.copyWith(align: PosAlign.left),
         ),
         PosColumn(
-          text: '${prefacturaData.conIva.toStringAsFixed(2)}',
+          text: prefacturaData.conIva.toStringAsFixed(2),
           width: 3,
           styles: baseStyle.copyWith(align: PosAlign.left),
         ),
@@ -661,8 +661,9 @@ class PrintJobService {
           styles: baseStyle.copyWith(align: PosAlign.left),
         ),
         PosColumn(
-          text:
-              '${(prefacturaData.sinIva + prefacturaData.conIva).toStringAsFixed(2)}',
+          text: (prefacturaData.sinIva + prefacturaData.conIva).toStringAsFixed(
+            2,
+          ),
           width: 3,
           styles: baseStyle.copyWith(align: PosAlign.left),
         ),
@@ -675,7 +676,7 @@ class PrintJobService {
           styles: baseStyle.copyWith(align: PosAlign.left),
         ),
         PosColumn(
-          text: '${prefacturaData.iva.toStringAsFixed(2)}',
+          text: prefacturaData.iva.toStringAsFixed(2),
           width: 3,
           styles: baseStyle.copyWith(align: PosAlign.left),
         ),
@@ -688,7 +689,7 @@ class PrintJobService {
           styles: baseStyle.copyWith(align: PosAlign.left, bold: true),
         ),
         PosColumn(
-          text: '${prefacturaData.total.toStringAsFixed(2)}',
+          text: prefacturaData.total.toStringAsFixed(2),
           width: 3,
           styles: baseStyle.copyWith(align: PosAlign.left, bold: true),
         ),
@@ -876,7 +877,7 @@ class PrintJobService {
       for (var detalle in ventaData.detalles) {
         bytes += generator.row([
           PosColumn(
-            text: '${detalle.cantidad.toStringAsFixed(2)}',
+            text: detalle.cantidad.toStringAsFixed(2),
             width: 2,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
@@ -886,12 +887,12 @@ class PrintJobService {
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
           PosColumn(
-            text: '${detalle.valorUnitario.toStringAsFixed(2)}',
+            text: detalle.valorUnitario.toStringAsFixed(2),
             width: 2,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
           PosColumn(
-            text: '${detalle.total.toStringAsFixed(2)}',
+            text: detalle.total.toStringAsFixed(2),
             width: 3,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
@@ -920,7 +921,7 @@ class PrintJobService {
           styles: baseStyle.copyWith(align: PosAlign.left),
         ),
         PosColumn(
-          text: '${ventaData.base0.toStringAsFixed(4)}',
+          text: ventaData.base0.toStringAsFixed(4),
           width: 3,
           styles: baseStyle.copyWith(align: PosAlign.left),
         ),
@@ -934,7 +935,7 @@ class PrintJobService {
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
           PosColumn(
-            text: '${ventaData.subtotal5.toStringAsFixed(4)}',
+            text: ventaData.subtotal5.toStringAsFixed(4),
             width: 3,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
@@ -949,7 +950,7 @@ class PrintJobService {
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
           PosColumn(
-            text: '${ventaData.subtotal8.toStringAsFixed(4)}',
+            text: ventaData.subtotal8.toStringAsFixed(4),
             width: 3,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
@@ -964,7 +965,7 @@ class PrintJobService {
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
           PosColumn(
-            text: '${ventaData.subtotal12.toStringAsFixed(4)}',
+            text: ventaData.subtotal12.toStringAsFixed(4),
             width: 3,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
@@ -979,7 +980,7 @@ class PrintJobService {
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
           PosColumn(
-            text: '${ventaData.subtotal15.toStringAsFixed(4)}',
+            text: ventaData.subtotal15.toStringAsFixed(4),
             width: 3,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
@@ -994,7 +995,7 @@ class PrintJobService {
           styles: baseStyle.copyWith(align: PosAlign.left, bold: true),
         ),
         PosColumn(
-          text: '${ventaData.total.toStringAsFixed(2)}',
+          text: ventaData.total.toStringAsFixed(2),
           width: 3,
           styles: baseStyle.copyWith(align: PosAlign.left, bold: true),
         ),
@@ -1019,12 +1020,12 @@ class PrintJobService {
       for (var formaPago in ventaData.formasPago) {
         bytes += generator.row([
           PosColumn(
-            text: '${formaPago.detalle ?? ''}',
+            text: formaPago.detalle ?? '',
             width: 8,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
           PosColumn(
-            text: '${formaPago.importe.toStringAsFixed(2).padLeft(8)}',
+            text: formaPago.importe.toStringAsFixed(2).padLeft(8),
             width: 4,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
@@ -1697,7 +1698,7 @@ class PrintJobService {
 
         bytes += generator.row([
           PosColumn(
-            text: '${detalle.cant.toStringAsFixed(2)}',
+            text: detalle.cant.toStringAsFixed(2),
             width: 2,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
@@ -1707,12 +1708,12 @@ class PrintJobService {
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
           PosColumn(
-            text: '${detalle.valUnitario}',
+            text: detalle.valUnitario,
             width: 2,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
           PosColumn(
-            text: '${detalle.valTotal}',
+            text: detalle.valTotal,
             width: 3,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
@@ -1939,12 +1940,12 @@ class PrintJobService {
       for (var formaPago in request.formaPago) {
         bytes += generator.row([
           PosColumn(
-            text: '${formaPago.detalle}',
+            text: formaPago.detalle,
             width: 8,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
           PosColumn(
-            text: '${formaPago.importe.toStringAsFixed(2).padLeft(8)}',
+            text: formaPago.importe.toStringAsFixed(2).padLeft(8),
             width: 4,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),

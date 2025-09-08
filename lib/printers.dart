@@ -10,7 +10,7 @@ import 'package:flutter_esc_pos_utils/flutter_esc_pos_utils.dart';
 import 'package:provider/provider.dart';
 
 class PrinterConfig extends StatefulWidget {
-  const PrinterConfig({Key? key}) : super(key: key);
+  const PrinterConfig({super.key});
 
   @override
   State<PrinterConfig> createState() => _PrinterConfigState();
@@ -110,11 +110,10 @@ class _PrinterConfigState extends State<PrinterConfig> {
                       ),
                     ),
                     items: <DropdownMenuItem<PrinterType>>[
-                      if (!Platform.isWindows)
-                        const DropdownMenuItem(
-                          value: PrinterType.bluetooth,
-                          child: Text('Bluetooth'),
-                        ),
+                      const DropdownMenuItem(
+                        value: PrinterType.bluetooth,
+                        child: Text('Bluetooth'),
+                      ),
                       const DropdownMenuItem(
                         value: PrinterType.usb,
                         child: Text('USB'),
@@ -134,10 +133,10 @@ class _PrinterConfigState extends State<PrinterConfig> {
 
                 // Printer type selection
 
-                // BLE option for Android
+                // BLE option for Android and Windows
                 Visibility(
                   visible:
-                      Platform.isAndroid &&
+                      (Platform.isAndroid || Platform.isWindows) &&
                       printerService.printerType == PrinterType.bluetooth,
                   child: SwitchListTile.adaptive(
                     title: const Text('BLE'),
@@ -151,10 +150,10 @@ class _PrinterConfigState extends State<PrinterConfig> {
                   ),
                 ),
 
-                // Reconnect option for Android
+                // Reconnect option for Android and Windows
                 Visibility(
                   visible:
-                      Platform.isAndroid &&
+                      (Platform.isAndroid || Platform.isWindows) &&
                       printerService.printerType == PrinterType.bluetooth,
                   child: SwitchListTile.adaptive(
                     title: const Text('Reconectar automáticamente'),
@@ -365,8 +364,24 @@ class _PrinterConfigState extends State<PrinterConfig> {
                     ListTile(
                       title: Text(device.deviceName ?? 'Desconocido'),
                       subtitle: Text(device.address ?? ''),
-                      onTap: () {
-                        printerService.selectDevice(device);
+                      onTap: () async {
+                        // Mostrar diálogo de selección de tamaño de papel antes de agregar
+                        final paperSize = await _showPaperSizeSelectionDialog(
+                          device.deviceName ?? 'Impresora',
+                        );
+
+                        if (paperSize != null) {
+                          // Agregar la impresora con el tamaño seleccionado
+                          await printerService.addPrinterWithManualSize(
+                            device,
+                            paperSize,
+                          );
+
+                          // También seleccionar como impresora principal si no hay ninguna
+                          if (printerService.currentPrinter == null) {
+                            printerService.selectDevice(device);
+                          }
+                        }
                       },
                       leading:
                           printerService.currentPrinter?.address ==
@@ -421,12 +436,49 @@ class _PrinterConfigState extends State<PrinterConfig> {
                             "Impresoras Conectadas",
                             style: Theme.of(context).textTheme.headlineSmall,
                           ),
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              _showAddPrinterDialog(context, printerService);
-                            },
-                            icon: const Icon(Icons.add),
-                            label: const Text('Agregar'),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Botón para corregir configuraciones
+                              IconButton(
+                                onPressed: () async {
+                                  // Mostrar debug info antes
+                                  printerService.debugPrinterInfo();
+
+                                  // Corregir automáticamente POS58 Printer a 58mm
+                                  await printerService
+                                      .fixExistingPrinterConfiguration(
+                                        'POS58 Printer',
+                                        PaperSize.mm58,
+                                      );
+
+                                  // Mostrar debug info después
+                                  printerService.debugPrinterInfo();
+
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Configuración de POS58 Printer corregida a 58mm',
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                },
+                                icon: const Icon(Icons.build),
+                                tooltip: 'Corregir configuraciones',
+                              ),
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  _showAddPrinterDialog(
+                                    context,
+                                    printerService,
+                                  );
+                                },
+                                icon: const Icon(Icons.add),
+                                label: const Text('Agregar'),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -462,12 +514,70 @@ class _PrinterConfigState extends State<PrinterConfig> {
                             color: isConnected ? Colors.green : Colors.red,
                           ),
                           title: Text(printerName),
-                          subtitle: Text(
-                            '${printer.typePrinter.name.toUpperCase()} - ${isConnected ? "Conectada" : "Desconectada"}',
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${printer.typePrinter.name.toUpperCase()} - ${isConnected ? "Conectada" : "Desconectada"}',
+                              ),
+                              Text(
+                                'Tamaño: ${printerService.getPaperSizeDescriptionForPrinter(printerName)}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
                           ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              // Botón para probar tamaño de papel
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.print,
+                                  color: Colors.green,
+                                ),
+                                onPressed:
+                                    isConnected
+                                        ? () async {
+                                          final printerService =
+                                              Provider.of<PrinterService>(
+                                                context,
+                                                listen: false,
+                                              );
+                                          final success = await printerService
+                                              .printPaperSizeTestForPrinter(
+                                                printerName,
+                                              );
+
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  success
+                                                      ? 'Prueba de papel enviada a $printerName'
+                                                      : 'Error al imprimir prueba en $printerName',
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        }
+                                        : null,
+                                tooltip: 'Probar tamaño de papel',
+                              ),
+                              // Botón para configurar tamaño de papel
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.settings,
+                                  color: Colors.blue,
+                                ),
+                                onPressed:
+                                    () => _showPaperSizeDialog(printerName),
+                                tooltip: 'Configurar tamaño de papel',
+                              ),
                               IconButton(
                                 icon: Icon(
                                   isConnected ? Icons.link_off : Icons.link,
@@ -747,6 +857,191 @@ class _PrinterConfigState extends State<PrinterConfig> {
                   );
                 },
                 child: const Text('Actualizar'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  // Mostrar diálogo de selección de tamaño de papel al agregar impresora
+  Future<PaperSize?> _showPaperSizeSelectionDialog(String printerName) async {
+    PaperSize? selectedPaperSize;
+
+    return await showDialog<PaperSize>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Text('Seleccionar tamaño de papel\n$printerName'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Selecciona el tamaño de papel para esta impresora:',
+                  style: TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 16),
+                StatefulBuilder(
+                  builder:
+                      (context, setDialogState) => Column(
+                        children: [
+                          RadioListTile<PaperSize>(
+                            title: const Text('58mm'),
+                            subtitle: const Text(
+                              'Papel térmico pequeño (ideal para tickets)',
+                            ),
+                            value: PaperSize.mm58,
+                            groupValue: selectedPaperSize,
+                            onChanged: (value) {
+                              setDialogState(() {
+                                selectedPaperSize = value;
+                              });
+                            },
+                          ),
+                          RadioListTile<PaperSize>(
+                            title: const Text('72mm'),
+                            subtitle: const Text('Papel térmico mediano'),
+                            value: PaperSize.mm72,
+                            groupValue: selectedPaperSize,
+                            onChanged: (value) {
+                              setDialogState(() {
+                                selectedPaperSize = value;
+                              });
+                            },
+                          ),
+                          RadioListTile<PaperSize>(
+                            title: const Text('80mm'),
+                            subtitle: const Text(
+                              'Papel térmico estándar (más común)',
+                            ),
+                            value: PaperSize.mm80,
+                            groupValue: selectedPaperSize,
+                            onChanged: (value) {
+                              setDialogState(() {
+                                selectedPaperSize = value;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, null),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed:
+                    selectedPaperSize != null
+                        ? () => Navigator.pop(context, selectedPaperSize)
+                        : null,
+                child: const Text('Agregar Impresora'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  // Mostrar diálogo para configurar tamaño de papel de una impresora específica
+  void _showPaperSizeDialog(String printerName) {
+    final printerService = Provider.of<PrinterService>(context, listen: false);
+    final currentPaperSize = printerService.getPaperSize(printerName);
+    PaperSize selectedPaperSize = currentPaperSize;
+
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Text('Configurar tamaño de papel\n$printerName'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Tamaño actual: ${printerService.getPaperSizeDescriptionForPrinter(printerName)}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[700],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text('Seleccionar nuevo tamaño:'),
+                const SizedBox(height: 16),
+                StatefulBuilder(
+                  builder:
+                      (context, setDialogState) => Column(
+                        children: [
+                          RadioListTile<PaperSize>(
+                            title: const Text('58mm'),
+                            subtitle: const Text('Papel térmico pequeño'),
+                            value: PaperSize.mm58,
+                            groupValue: selectedPaperSize,
+                            onChanged: (value) {
+                              if (value != null) {
+                                setDialogState(() {
+                                  selectedPaperSize = value;
+                                });
+                              }
+                            },
+                          ),
+                          RadioListTile<PaperSize>(
+                            title: const Text('72mm'),
+                            subtitle: const Text('Papel térmico mediano'),
+                            value: PaperSize.mm72,
+                            groupValue: selectedPaperSize,
+                            onChanged: (value) {
+                              if (value != null) {
+                                setDialogState(() {
+                                  selectedPaperSize = value;
+                                });
+                              }
+                            },
+                          ),
+                          RadioListTile<PaperSize>(
+                            title: const Text('80mm'),
+                            subtitle: const Text('Papel térmico estándar'),
+                            value: PaperSize.mm80,
+                            groupValue: selectedPaperSize,
+                            onChanged: (value) {
+                              if (value != null) {
+                                setDialogState(() {
+                                  selectedPaperSize = value;
+                                });
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  await printerService.setPaperSizeForPrinter(
+                    printerName,
+                    selectedPaperSize,
+                  );
+
+                  Navigator.pop(context);
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Tamaño de papel actualizado para $printerName: ${selectedPaperSize == PaperSize.mm58
+                            ? "58mm"
+                            : selectedPaperSize == PaperSize.mm72
+                            ? "72mm"
+                            : "80mm"}',
+                      ),
+                    ),
+                  );
+                },
+                child: const Text('Guardar'),
               ),
             ],
           ),

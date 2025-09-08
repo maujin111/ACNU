@@ -71,7 +71,10 @@ class PrinterService extends ChangeNotifier {
   Function(bool isConnected, String? printerName)? onConnectionChanged;
 
   PrinterService() {
-    if (Platform.isWindows) defaultPrinterType = PrinterType.usb;
+    // En Windows, preferir USB por defecto pero permitir Bluetooth también
+    if (Platform.isWindows) {
+      defaultPrinterType = PrinterType.usb; // USB como predeterminado
+    }
     _initListeners();
     _loadSavedPrinter();
     // Iniciar la verificación automática del estado
@@ -104,8 +107,83 @@ class PrinterService extends ChangeNotifier {
   BluetoothPrinter? getPrinterByName(String name) => _connectedPrinters[name];
   // Verificar si una impresora específica está conectada
   bool isPrinterConnected(String name) => _connectionStatus[name] ?? false;
+  // Método para debuggear información de impresoras
+  void debugPrinterInfo() {
+    print('📊 === DEBUG PRINTER INFO ===');
+    print('📊 _connectedPrinters: ${_connectedPrinters.keys.toList()}');
+    print('📊 _paperSizes Map:');
+    _paperSizes.forEach((name, size) {
+      String sizeStr = size.toString().split('.').last; // mm58, mm72, mm80
+      print('📊   $name: $sizeStr');
+    });
+    print('📊 _connectionStatus: $_connectionStatus');
+    print('📊 === END DEBUG ===');
+  }
+
   // Obtener el tamaño de papel de una impresora específica
-  PaperSize getPaperSize(String name) => _paperSizes[name] ?? PaperSize.mm80;
+  PaperSize getPaperSize(String name) {
+    final paperSize = _paperSizes[name] ?? PaperSize.mm80;
+    String sizeStr = paperSize.toString().split('.').last; // mm58, mm72, mm80
+    print(
+      '🔍 getPaperSize para $name: $sizeStr (disponible en _paperSizes: ${_paperSizes.containsKey(name)})',
+    );
+    return paperSize;
+  }
+
+  // Método para corregir configuraciones existentes (útil para debugging)
+  Future<void> fixExistingPrinterConfiguration(
+    String printerName,
+    PaperSize correctSize,
+  ) async {
+    // Debug temporal para entender qué está pasando
+    print('🔧 === INICIO DEBUG DETALLADO ===');
+    print('🔧 printerName: $printerName');
+    print('🔧 correctSize recibido: $correctSize');
+    print('🔧 correctSize == PaperSize.mm58: ${correctSize == PaperSize.mm58}');
+    print('🔧 correctSize == PaperSize.mm72: ${correctSize == PaperSize.mm72}');
+    print('🔧 correctSize == PaperSize.mm80: ${correctSize == PaperSize.mm80}');
+    print('🔧 Valor actual en _paperSizes: ${_paperSizes[printerName]}');
+    print('🔧 === FIN DEBUG DETALLADO ===');
+
+    String sizeStr = correctSize.toString().split('.').last; // mm58, mm72, mm80
+    print('🔧 Corrigiendo configuración de $printerName a $sizeStr');
+
+    // Actualizar en memoria
+    _paperSizes[printerName] = correctSize;
+
+    // Guardar en configuración
+    await ConfigService.savePrinterPaperSize(printerName, correctSize);
+
+    String confirmedSizeStr = _paperSizes[printerName].toString().split('.').last;
+    print('✅ Configuración corregida para $printerName: $confirmedSizeStr');
+    notifyListeners();
+  }
+
+  // Configurar el tamaño de papel para una impresora específica
+  Future<void> setPaperSizeForPrinter(
+    String printerName,
+    PaperSize paperSize,
+  ) async {
+    print('🔧 setPaperSizeForPrinter llamado para $printerName con $paperSize');
+    print(
+      '🔧 Impresora existe en _connectedPrinters: ${_connectedPrinters.containsKey(printerName)}',
+    );
+    print('🔧 Valor anterior en _paperSizes: ${_paperSizes[printerName]}');
+
+    if (_connectedPrinters.containsKey(printerName)) {
+      _paperSizes[printerName] = paperSize;
+
+      // Guardar en configuración
+      await ConfigService.savePrinterPaperSize(printerName, paperSize);
+
+      print('📄 Tamaño de papel configurado para $printerName: $paperSize');
+      print('🔧 Valor actualizado en _paperSizes: ${_paperSizes[printerName]}');
+      notifyListeners();
+    } else {
+      print('❌ Impresora $printerName no está en _connectedPrinters');
+    }
+  }
+
   // Obtener lista de nombres de impresoras conectadas
   List<String> get connectedPrinterNames => _connectedPrinters.keys.toList();
 
@@ -284,6 +362,9 @@ class PrinterService extends ChangeNotifier {
 
       // Cargar todas las impresoras conectadas
       final connectedPrinters = await ConfigService.loadAllConnectedPrinters();
+      // Cargar todos los tamaños de papel guardados
+      final savedPaperSizes = await ConfigService.loadAllPrinterPaperSizes();
+
       for (final entry in connectedPrinters.entries) {
         final printerName = entry.key;
         final printerData = entry.value;
@@ -293,8 +374,15 @@ class PrinterService extends ChangeNotifier {
         // Agregar a la lista de conectadas
         _connectedPrinters[printerName] = printerData;
 
-        // Detectar tamaño de papel
-        final paperSize = await _detectPaperSizeForPrinter(printerData);
+        // Cargar tamaño de papel guardado o detectar automáticamente
+        PaperSize paperSize;
+        if (savedPaperSizes.containsKey(printerName)) {
+          paperSize = savedPaperSizes[printerName]!;
+          print('📄 Tamaño de papel cargado para $printerName: $paperSize');
+        } else {
+          paperSize = await _detectPaperSizeForPrinter(printerData);
+          print('📄 Tamaño de papel detectado para $printerName: $paperSize');
+        }
         _paperSizes[printerName] = paperSize;
 
         // Intentar conectar
@@ -342,12 +430,11 @@ class PrinterService extends ChangeNotifier {
             );
 
             // Ejemplos de vendorId para diferentes tamaños (ajustar según tus impresoras)
-            if (selectedPrinter!.vendorId == 1155 ||
-                selectedPrinter!.vendorId == 7358) {
+            final vendorIdStr = selectedPrinter!.vendorId?.toString();
+            if (vendorIdStr == '1155' || vendorIdStr == '7358') {
               _detectedPaperSize = PaperSize.mm58;
               print('Detectado tamaño de papel: 58mm para impresora USB');
-            } else if (selectedPrinter!.vendorId == 1659 ||
-                selectedPrinter!.vendorId == 8137) {
+            } else if (vendorIdStr == '1659' || vendorIdStr == '8137') {
               _detectedPaperSize = PaperSize.mm80;
               print('Detectado tamaño de papel: 80mm para impresora USB');
             } else {
@@ -463,14 +550,48 @@ class PrinterService extends ChangeNotifier {
     // Intentar conectar a la impresora
     await _connectToPrinter();
 
-    // También agregar a la lista de impresoras conectadas
-    await addPrinter(device);
+    // Solo agregar a la lista de impresoras conectadas si no está ya presente
+    final deviceName = device.deviceName ?? 'Unknown';
+    if (!_connectedPrinters.containsKey(deviceName)) {
+      await addPrinter(device);
+    }
 
     notifyListeners();
   }
 
   // MÉTODOS PARA MÚLTIPLES IMPRESORAS
-  // Agregar una impresora a la lista de conectadas
+  // Agregar una impresora a la lista de conectadas con configuración manual de tamaño
+  Future<void> addPrinterWithManualSize(
+    BluetoothPrinter printer,
+    PaperSize paperSize,
+  ) async {
+    final printerName = printer.deviceName ?? 'Unknown';
+
+    print(
+      '🖨️ Agregando impresora: $printerName con tamaño manual: $paperSize',
+    );
+
+    // Agregar a la lista de conectadas
+    _connectedPrinters[printerName] = printer;
+
+    // Configurar el tamaño de papel especificado manualmente
+    _paperSizes[printerName] = paperSize;
+
+    // Intentar conectar
+    final isConnected = await _connectToPrinterByName(printerName);
+    _connectionStatus[printerName] = isConnected;
+
+    // Guardar en configuración
+    await ConfigService.saveConnectedPrinter(printerName, printer);
+    await ConfigService.savePrinterPaperSize(printerName, paperSize);
+
+    print(
+      '✅ Impresora $printerName ${isConnected ? "conectada" : "agregada pero no conectada"} con tamaño $paperSize',
+    );
+    notifyListeners();
+  }
+
+  // Agregar una impresora a la lista de conectadas (método existente para retrocompatibilidad)
   Future<void> addPrinter(BluetoothPrinter printer) async {
     final printerName = printer.deviceName ?? 'Unknown';
 
@@ -479,9 +600,33 @@ class PrinterService extends ChangeNotifier {
     // Agregar a la lista de conectadas
     _connectedPrinters[printerName] = printer;
 
-    // Detectar tamaño de papel para esta impresora
-    final paperSize = await _detectPaperSizeForPrinter(printer);
-    _paperSizes[printerName] = paperSize;
+    // Verificar si ya tiene un tamaño de papel configurado
+    PaperSize paperSize;
+    if (_paperSizes.containsKey(printerName)) {
+      // Usar el tamaño ya configurado
+      paperSize = _paperSizes[printerName]!;
+      print(
+        '📄 Usando tamaño de papel ya configurado para $printerName: $paperSize',
+      );
+    } else {
+      // Cargar desde configuración guardada o usar tamaño por defecto
+      final savedPaperSize = await ConfigService.loadPrinterPaperSize(
+        printerName,
+      );
+      if (savedPaperSize != null) {
+        paperSize = savedPaperSize;
+        print(
+          '📄 Tamaño de papel cargado desde configuración para $printerName: $paperSize',
+        );
+      } else {
+        // En lugar de auto-detectar, usar 80mm por defecto y requerir configuración manual
+        paperSize = PaperSize.mm80;
+        print(
+          '📄 Usando tamaño por defecto para $printerName: $paperSize - requiere configuración manual',
+        );
+      }
+      _paperSizes[printerName] = paperSize;
+    }
 
     // Intentar conectar
     final isConnected = await _connectToPrinterByName(printerName);
@@ -494,6 +639,33 @@ class PrinterService extends ChangeNotifier {
       '✅ Impresora $printerName ${isConnected ? "conectada" : "agregada pero no conectada"}',
     );
     notifyListeners();
+  }
+
+  // Método para corregir configuraciones incorrectas de impresoras existentes
+  Future<void> fixPrinterConfiguration(
+    String printerName,
+    PaperSize correctSize,
+  ) async {
+    if (_connectedPrinters.containsKey(printerName)) {
+      print('🔧 Corrigiendo configuración de $printerName a $correctSize');
+
+      // Actualizar en memoria
+      _paperSizes[printerName] = correctSize;
+
+      // Guardar en configuración
+      await ConfigService.savePrinterPaperSize(printerName, correctSize);
+
+      print('✅ Configuración de $printerName corregida a $correctSize');
+      notifyListeners();
+    }
+  }
+
+  // Método específico para corregir POS58 Printer a 58mm
+  Future<void> fixPOS58Configuration() async {
+    const printerName = 'POS58 Printer';
+    if (_connectedPrinters.containsKey(printerName)) {
+      await fixPrinterConfiguration(printerName, PaperSize.mm58);
+    }
   }
 
   // Remover una impresora de la lista
@@ -516,6 +688,7 @@ class PrinterService extends ChangeNotifier {
 
       // Remover de configuración
       await ConfigService.removeConnectedPrinter(printerName);
+      await ConfigService.removePrinterPaperSize(printerName);
 
       // Si era la impresora principal, limpiar
       if (selectedPrinter?.deviceName == printerName) {
@@ -575,9 +748,10 @@ class PrinterService extends ChangeNotifier {
               'Detectando tamaño de papel para impresora USB: ${printer.vendorId}',
             );
 
-            if (printer.vendorId == 1155 || printer.vendorId == 7358) {
+            final vendorIdStr = printer.vendorId.toString();
+            if (vendorIdStr == '1155' || vendorIdStr == '7358') {
               detectedSize = PaperSize.mm58;
-            } else if (printer.vendorId == 1659 || printer.vendorId == 8137) {
+            } else if (vendorIdStr == '1659' || vendorIdStr == '8137') {
               detectedSize = PaperSize.mm80;
             }
           }
@@ -804,6 +978,66 @@ class PrinterService extends ChangeNotifier {
       return true;
     } catch (e) {
       print('❌ Error al imprimir en $printerName: $e');
+      return false;
+    }
+  }
+
+  // NUEVO: Generar bytes de impresión usando el tamaño de papel específico de la impresora
+  Future<List<int>> generatePrintBytesForPrinter(
+    String printerName,
+    String content, {
+    PosStyles? styles,
+    bool addCut = true,
+    bool addFeed = true,
+  }) async {
+    final printer = _connectedPrinters[printerName];
+    if (printer == null) {
+      throw Exception('Impresora no encontrada: $printerName');
+    }
+
+    // Obtener el tamaño de papel específico de esta impresora
+    final paperSize = getPaperSize(printerName);
+
+    print('📄 Generando contenido para $printerName con tamaño: $paperSize');
+
+    List<int> bytes = [];
+    final profile = await CapabilityProfile.load(name: 'XP-N160I');
+    final generator = Generator(paperSize, profile);
+
+    bytes += generator.setGlobalCodeTable('CP1252');
+    bytes += generator.text(content, styles: styles ?? const PosStyles());
+
+    if (addFeed) {
+      bytes += generator.feed(2);
+    }
+
+    if (addCut) {
+      bytes += generator.cut();
+    }
+
+    return bytes;
+  }
+
+  // NUEVO: Imprimir contenido a una impresora específica usando su tamaño de papel
+  Future<bool> printContentToPrinter(
+    String printerName,
+    String content, {
+    PosStyles? styles,
+    bool addCut = true,
+    bool addFeed = true,
+  }) async {
+    try {
+      final bytes = await generatePrintBytesForPrinter(
+        printerName,
+        content,
+        styles: styles,
+        addCut: addCut,
+        addFeed: addFeed,
+      );
+
+      return await printBytesToPrinter(bytes, printerName);
+    } catch (e) {
+      print('❌ Error al imprimir contenido en $printerName: $e');
       return false;
     }
   }
@@ -1041,6 +1275,18 @@ class PrinterService extends ChangeNotifier {
     }
   }
 
+  // Obtener descripción legible del tamaño de papel de una impresora específica
+  String getPaperSizeDescriptionForPrinter(String printerName) {
+    final paperSize = getPaperSize(printerName);
+    return paperSize == PaperSize.mm58
+        ? "58mm"
+        : paperSize == PaperSize.mm80
+        ? "80mm"
+        : paperSize == PaperSize.mm72
+        ? "72mm"
+        : "Desconocido";
+  }
+
   // Método para probar y verificar el tamaño de papel actual
   Future<bool> printPaperSizeTest() async {
     if (selectedPrinter == null) {
@@ -1191,6 +1437,123 @@ class PrinterService extends ChangeNotifier {
       return true;
     } catch (e) {
       print('❌ Error al imprimir prueba de tamaño de papel: $e');
+      return false;
+    }
+  }
+
+  // NUEVO: Método para probar el tamaño de papel de una impresora específica
+  Future<bool> printPaperSizeTestForPrinter(String printerName) async {
+    final printer = _connectedPrinters[printerName];
+    if (printer == null) {
+      print('❌ Impresora no encontrada: $printerName');
+      return false;
+    }
+
+    if (!isPrinterConnected(printerName)) {
+      print('❌ Impresora no conectada: $printerName');
+      return false;
+    }
+
+    try {
+      // Obtener el tamaño de papel específico de esta impresora
+      final paperSize = getPaperSize(printerName);
+
+      print(
+        '📄 Generando prueba de tamaño de papel para $printerName: $paperSize',
+      );
+
+      List<int> bytes = [];
+      final profile = await CapabilityProfile.load(name: 'XP-N160I');
+      final generator = Generator(paperSize, profile);
+
+      bytes += generator.setGlobalCodeTable('CP1252');
+      bytes += generator.reset();
+
+      bytes += generator.text(
+        'PRUEBA DE TAMAÑO DE PAPEL',
+        styles: const PosStyles(
+          align: PosAlign.center,
+          bold: true,
+          height: PosTextSize.size2,
+        ),
+      );
+      bytes += generator.text(
+        '========================',
+        styles: const PosStyles(align: PosAlign.center),
+      );
+
+      // Información de la impresora
+      bytes += generator.text(
+        'Impresora: $printerName',
+        styles: const PosStyles(align: PosAlign.center, bold: true),
+      );
+      bytes += generator.text(
+        'Tipo: ${printer.typePrinter.toString().split('.').last.toUpperCase()}',
+        styles: const PosStyles(align: PosAlign.center),
+      );
+
+      // Mostrar tamaño de papel configurado
+      final paperSizeText =
+          paperSize == PaperSize.mm58
+              ? "58mm"
+              : paperSize == PaperSize.mm80
+              ? "80mm"
+              : paperSize == PaperSize.mm72
+              ? "72mm"
+              : "Desconocido";
+
+      bytes += generator.text(
+        'Tamaño configurado: $paperSizeText',
+        styles: const PosStyles(align: PosAlign.center, bold: true),
+      );
+
+      bytes += generator.feed(1);
+
+      // Indicadores de ancho según el tamaño configurado
+      if (paperSize == PaperSize.mm58) {
+        bytes += generator.text(
+          '1234567890123456789012345678901234',
+          styles: const PosStyles(align: PosAlign.center),
+        );
+        bytes += generator.text(
+          '    58mm - 34 caracteres aprox.    ',
+          styles: const PosStyles(align: PosAlign.center),
+        );
+      } else if (paperSize == PaperSize.mm72) {
+        bytes += generator.text(
+          '123456789012345678901234567890123456789012',
+          styles: const PosStyles(align: PosAlign.center),
+        );
+        bytes += generator.text(
+          '    72mm - 42 caracteres aprox.    ',
+          styles: const PosStyles(align: PosAlign.center),
+        );
+      } else {
+        bytes += generator.text(
+          '123456789012345678901234567890123456789012345678',
+          styles: const PosStyles(align: PosAlign.center),
+        );
+        bytes += generator.text(
+          '     80mm - 48 caracteres aprox.     ',
+          styles: const PosStyles(align: PosAlign.center),
+        );
+      }
+
+      bytes += generator.feed(2);
+      bytes += generator.cut();
+
+      // Imprimir usando el método específico para esa impresora
+      final success = await printBytesToPrinter(bytes, printerName);
+
+      if (success) {
+        print('✅ Prueba de tamaño de papel enviada a $printerName');
+      }
+
+      return success;
+    } catch (e) {
+      print(
+        '❌ Error al imprimir prueba de tamaño de papel para $printerName: $e',
+      );
       return false;
     }
   }

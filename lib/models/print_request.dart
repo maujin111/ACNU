@@ -794,14 +794,8 @@ class DetalleVenta {
                   (double.tryParse(json['dven_valor_unitario'].toString()) ??
                       0.0)
               : 0.0,
-      lotes:
-          lotesList != null
-              ? lotesList.map((lote) => Lote.fromJson(lote)).toList()
-              : null,
-      series:
-          seriesList != null
-              ? seriesList.map((serie) => Serie.fromJson(serie)).toList()
-              : null,
+      lotes: lotesList?.map((lote) => Lote.fromJson(lote)).toList(),
+      series: seriesList?.map((serie) => Serie.fromJson(serie)).toList(),
     );
   }
 
@@ -865,11 +859,9 @@ class Serie {
 
     return Serie(
       propiedades:
-          propiedadesList != null
-              ? propiedadesList
-                  .map((prop) => PropiedadSerie.fromJson(prop))
-                  .toList()
-              : null,
+          propiedadesList
+              ?.map((prop) => PropiedadSerie.fromJson(prop))
+              .toList(),
     );
   }
 }

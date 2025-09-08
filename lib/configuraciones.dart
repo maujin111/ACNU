@@ -21,7 +21,7 @@ class _ConfiguracionesState extends State<Configuraciones> {
         surfaceTintColor: Colors.lightGreen,
       ),
       body: Center(
-        child: Container(
+        child: SizedBox(
           width: double.infinity,
           child: DefaultTabController(
             length: 2,

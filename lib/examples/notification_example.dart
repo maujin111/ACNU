@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:anfibius_uwu/services/notifications_service.dart';
 
 class NotificationExample extends StatefulWidget {
-  const NotificationExample({Key? key}) : super(key: key);
+  const NotificationExample({super.key});
 
   @override
   State<NotificationExample> createState() => _NotificationExampleState();

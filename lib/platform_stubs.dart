@@ -1,6 +1,5 @@
 // Stubs para plataformas no compatibles con escritorio
 
-import 'dart:ui' show Size, Rect;
 import 'package:flutter/services.dart';
 
 // Stub para tray_manager
