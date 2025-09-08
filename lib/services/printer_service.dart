@@ -122,7 +122,8 @@ class PrinterService extends ChangeNotifier {
 
   // Obtener el tamaño de papel de una impresora específica
   PaperSize getPaperSize(String name) {
-    final paperSize = _paperSizes[name] ?? PaperSize.mm80;
+    final paperSize = _paperSizes[name] ?? PaperSize.mm58;
+    print(_paperSizes);
     String sizeStr = paperSize.toString().split('.').last; // mm58, mm72, mm80
     print(
       '🔍 getPaperSize para $name: $sizeStr (disponible en _paperSizes: ${_paperSizes.containsKey(name)})',
@@ -154,7 +155,8 @@ class PrinterService extends ChangeNotifier {
     // Guardar en configuración
     await ConfigService.savePrinterPaperSize(printerName, correctSize);
 
-    String confirmedSizeStr = _paperSizes[printerName].toString().split('.').last;
+    String confirmedSizeStr =
+        _paperSizes[printerName].toString().split('.').last;
     print('✅ Configuración corregida para $printerName: $confirmedSizeStr');
     notifyListeners();
   }

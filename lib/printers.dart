@@ -333,96 +333,11 @@ class _PrinterConfigState extends State<PrinterConfig> {
                     ],
                   ),
                 ),
+
                 // Devices list and controls
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      "Impresoras",
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        printerService.scanDevices();
-                      },
-                      icon: const Icon(Icons.search),
-                      label: const Text('Buscar'),
-                    ),
-                  ],
-                ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  ),
-                ),
                 const SizedBox(height: 10),
                 if (printerService.printerType != PrinterType.network) ...[
                   // List of devices
-                  for (var device in printerService.availableDevices)
-                    ListTile(
-                      title: Text(device.deviceName ?? 'Desconocido'),
-                      subtitle: Text(device.address ?? ''),
-                      onTap: () async {
-                        // Mostrar diálogo de selección de tamaño de papel antes de agregar
-                        final paperSize = await _showPaperSizeSelectionDialog(
-                          device.deviceName ?? 'Impresora',
-                        );
-
-                        if (paperSize != null) {
-                          // Agregar la impresora con el tamaño seleccionado
-                          await printerService.addPrinterWithManualSize(
-                            device,
-                            paperSize,
-                          );
-
-                          // También seleccionar como impresora principal si no hay ninguna
-                          if (printerService.currentPrinter == null) {
-                            printerService.selectDevice(device);
-                          }
-                        }
-                      },
-                      leading:
-                          printerService.currentPrinter?.address ==
-                                  device.address
-                              ? Icon(
-                                Icons.check_circle,
-                                color:
-                                    printerService.isConnected
-                                        ? Colors.green
-                                        : Colors.orange,
-                                size: 30,
-                              )
-                              : Icon(
-                                Icons.circle_outlined,
-                                color: Colors.grey,
-                                size: 30,
-                              ),
-                      trailing:
-                          printerService.currentPrinter?.address ==
-                                  device.address
-                              ? Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  // Estado de conexión
-                                  Icon(
-                                    printerService.isConnected
-                                        ? Icons.link
-                                        : Icons.link_off,
-                                    color:
-                                        printerService.isConnected
-                                            ? Colors.green
-                                            : Colors.red,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  // Icono de impresora
-                                  const Icon(Icons.print, color: Colors.blue),
-                                ],
-                              )
-                              : null,
-                    ),
-                  const SizedBox(height: 20),
 
                   // NUEVA SECCIÓN: Gestión de múltiples impresoras
                   Align(
@@ -439,35 +354,6 @@ class _PrinterConfigState extends State<PrinterConfig> {
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              // Botón para corregir configuraciones
-                              IconButton(
-                                onPressed: () async {
-                                  // Mostrar debug info antes
-                                  printerService.debugPrinterInfo();
-
-                                  // Corregir automáticamente POS58 Printer a 58mm
-                                  await printerService
-                                      .fixExistingPrinterConfiguration(
-                                        'POS58 Printer',
-                                        PaperSize.mm58,
-                                      );
-
-                                  // Mostrar debug info después
-                                  printerService.debugPrinterInfo();
-
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Configuración de POS58 Printer corregida a 58mm',
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                },
-                                icon: const Icon(Icons.build),
-                                tooltip: 'Corregir configuraciones',
-                              ),
                               ElevatedButton.icon(
                                 onPressed: () {
                                   _showAddPrinterDialog(
@@ -652,81 +538,6 @@ class _PrinterConfigState extends State<PrinterConfig> {
               ],
             ),
           ),
-        ),
-      ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            SegmentedButton<String>(
-              style: ButtonStyle(
-                iconColor: WidgetStatePropertyAll<Color>(Colors.green.shade900),
-              ),
-              segments: const [
-                ButtonSegment<String>(
-                  value: 'print',
-                  label: Text('Prueba'),
-                  icon: Icon(Icons.print),
-                ),
-                ButtonSegment<String>(
-                  value: 'size',
-                  label: Text('Tamaño'),
-                  icon: Icon(Icons.straighten),
-                ),
-                ButtonSegment<String>(
-                  value: 'detect',
-                  label: Text('Papel'),
-                  icon: Icon(Icons.search),
-                ),
-              ],
-              selected: const <String>{},
-              onSelectionChanged: (Set<String> newSelection) async {
-                if (printerService.currentPrinter == null) return;
-
-                if (newSelection.contains('print')) {
-                  final printJobService = Provider.of<PrintJobService>(
-                    context,
-                    listen: false,
-                  );
-                  String testJson =
-                      '{"tipo":"TEST","id":"test","copias":"1","orden":"1","printerName":"${printerService.currentPrinter?.deviceName}","data":{"hame_nombre":"PRUEBA","piso_nombre":"1","detalle":[{"ddin_cantidad":"1","umed_nombre":"UNI","prod_descripcion":"Impresión de prueba","ddin_observacion":""}]}}';
-                  await printJobService.processPrintRequest(testJson);
-                } else if (newSelection.contains('size')) {
-                  await printerService.printPaperSizeTest();
-                } else if (newSelection.contains('detect')) {
-                  await printerService.detectPaperSize();
-                  if (context.mounted) {
-                    String paperSizeText;
-                    if (printerService.usingCustomPaperSize) {
-                      paperSizeText =
-                          "Personalizado (${printerService.customPaperWidth}mm)";
-                    } else {
-                      paperSizeText =
-                          printerService.detectedPaperSize == PaperSize.mm58
-                              ? "58mm"
-                              : printerService.detectedPaperSize ==
-                                  PaperSize.mm80
-                              ? "80mm"
-                              : printerService.detectedPaperSize ==
-                                  PaperSize.mm72
-                              ? "72mm"
-                              : "Desconocido";
-                    }
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Tamaño de papel: $paperSizeText'),
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
-                  }
-                }
-              },
-              emptySelectionAllowed: true,
-              showSelectedIcon: false,
-            ),
-          ],
         ),
       ),
     );

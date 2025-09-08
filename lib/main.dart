@@ -199,7 +199,8 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> with TrayListener, WindowListener {
+class _MyHomePageState extends State<MyHomePage>
+    with TrayListener, WindowListener {
   WindowController? window;
   final Map<int, WindowController> _childWindows = {};
 
@@ -215,6 +216,95 @@ class _MyHomePageState extends State<MyHomePage> with TrayListener, WindowListen
       // Configurar el receptor de mensajes desde ventanas secundarias
       DesktopMultiWindow.setMethodHandler(_handleMethodCallback);
     }
+
+    // Configurar la impresión automática cuando llegan mensajes por WebSocket
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _setupAutoPrint();
+    });
+  }
+
+  void _setupAutoPrint() {
+    final webSocketService = Provider.of<WebSocketService>(
+      context,
+      listen: false,
+    );
+    final printJobService = Provider.of<PrintJobService>(
+      context,
+      listen: false,
+    );
+    final printerService = Provider.of<PrinterService>(context, listen: false);
+
+    // Configurar el callback para imprimir automáticamente cuando llegue un mensaje
+    webSocketService.onNewMessage = (String jsonMessage) async {
+      try {
+        print(
+          '🖨️ Procesando impresión automática para mensaje: ${jsonMessage.length > 100 ? jsonMessage.substring(0, 100) + "..." : jsonMessage}',
+        );
+
+        // Verificar si hay impresoras disponibles - mejorar la validación
+        bool hasAvailablePrinters = false;
+
+        if (printerService.selectedPrinter != null) {
+          hasAvailablePrinters = true;
+          print(
+            '✅ Impresora seleccionada disponible: ${printerService.selectedPrinter?.deviceName}',
+          );
+        } else if (printerService.connectedPrinters.isNotEmpty) {
+          hasAvailablePrinters = true;
+          print(
+            '✅ Impresoras conectadas disponibles: ${printerService.connectedPrinters.keys.join(", ")}',
+          );
+        }
+
+        if (!hasAvailablePrinters) {
+          print(
+            '⚠️ No hay impresoras conectadas o seleccionadas para procesar la impresión',
+          );
+          NotificationsService().showNotification(
+            id: DateTime.now().millisecondsSinceEpoch,
+            title: 'Sin impresoras',
+            body:
+                'No hay impresoras configuradas para procesar la orden de impresión',
+          );
+          return;
+        }
+
+        print('📤 Enviando solicitud de impresión al PrintJobService...');
+        final success = await printJobService.processPrintRequest(jsonMessage);
+
+        if (success) {
+          print('✅ Impresión procesada exitosamente');
+          // Mostrar notificación de éxito
+          NotificationsService().showNotification(
+            id: DateTime.now().millisecondsSinceEpoch,
+            title: 'Impresión realizada',
+            body: 'Se ha procesado una nueva orden de impresión',
+          );
+        } else {
+          print('❌ Error al procesar la impresión');
+          // Mostrar notificación de error
+          NotificationsService().showNotification(
+            id: DateTime.now().millisecondsSinceEpoch,
+            title: 'Error de impresión',
+            body:
+                'No se pudo procesar la orden de impresión. Verifique la configuración de impresoras.',
+          );
+        }
+      } catch (e, stackTrace) {
+        print('❌ Error en impresión automática: $e');
+        print('📋 Stack trace: $stackTrace');
+        NotificationsService().showNotification(
+          id: DateTime.now().millisecondsSinceEpoch,
+          title: 'Error de impresión',
+          body: 'Error al procesar la orden: $e',
+        );
+      }
+    };
+
+    print('✅ Impresión automática configurada correctamente');
+    print(
+      '🔗 Callback del WebSocket asignado: ${webSocketService.onNewMessage != null}',
+    );
   }
 
   // Manejador de mensajes desde ventanas secundarias

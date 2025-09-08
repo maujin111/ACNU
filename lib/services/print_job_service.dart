@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:anfibius_uwu/models/print_request.dart';
+import 'package:anfibius_uwu/services/config_service.dart';
 import 'package:anfibius_uwu/services/printer_service.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_esc_pos_utils/flutter_esc_pos_utils.dart';
@@ -49,9 +50,53 @@ class PrintJobService {
 
   PrintJobService(this.printerService);
 
+  /// Obtiene el tamaño de papel desde la configuración guardada para una impresora específica
+  Future<PaperSize> _getPaperSizeForPrinter(String? printerName) async {
+    if (printerName != null) {
+      print(
+        '🔍 Cargando tamaño de papel desde configuración para: $printerName',
+      );
+      final savedPaperSize = await ConfigService.loadPrinterPaperSize(
+        printerName,
+      );
+      if (savedPaperSize != null) {
+        String paperSizeName = _getPaperSizeDisplayName(savedPaperSize);
+        print(
+          '✅ Tamaño de papel cargado para $printerName: $paperSizeName (${savedPaperSize.toString()})',
+        );
+        return savedPaperSize;
+      } else {
+        print(
+          '⚠️ No hay tamaño de papel guardado para $printerName, usando 80mm por defecto',
+        );
+        return PaperSize.mm80;
+      }
+    } else {
+      print(
+        '⚠️ No se especificó impresora, usando tamaño detectado del servicio',
+      );
+      return printerService.getCurrentPaperSize();
+    }
+  }
+
+  /// Convierte PaperSize enum a nombre legible para mostrar en logs
+  String _getPaperSizeDisplayName(PaperSize paperSize) {
+    switch (paperSize) {
+      case PaperSize.mm58:
+        return '58mm';
+      case PaperSize.mm72:
+        return '72mm';
+      case PaperSize.mm80:
+        return '80mm';
+      default:
+        return 'Desconocido';
+    }
+  }
+
   /// Procesa un mensaje JSON recibido del WebSocket
   Future<bool> processPrintRequest(String jsonMessage) async {
     try {
+      print(jsonMessage);
       // Verificar si hay un JSON válido
       if (jsonMessage.trim().isEmpty) {
         print('❌ Mensaje recibido vacío o inválido');
@@ -99,12 +144,12 @@ class PrintJobService {
       // Procesar según el tipo de solicitud
       print('🖨️ Procesando solicitud de tipo: ${request.tipo.toUpperCase()}');
 
-      // Verificar el tamaño de papel detectado para la impresora objetivo
-      final paperSize =
-          targetPrinterName != null
-              ? printerService.getPaperSize(targetPrinterName)
-              : printerService.detectedPaperSize;
-      print('📄 Tamaño de papel para $targetPrinterName: $paperSize');
+      // Obtener el tamaño de papel desde la configuración guardada
+      final paperSize = await _getPaperSizeForPrinter(targetPrinterName);
+
+      print(
+        '📄 Tamaño de papel para $targetPrinterName: ${_getPaperSizeDisplayName(paperSize)}',
+      );
 
       switch (request.tipo.toUpperCase()) {
         case 'COMANDA':
@@ -162,14 +207,13 @@ class PrintJobService {
       List<int> bytes = []; // Usar el mismo perfil que en printDirectRequest
       final profile = await CapabilityProfile.load(name: 'ITPP047');
 
-      // Usar el tamaño de papel actual (detectado o personalizado)
-      final paperSize =
-          printerName != null
-              ? printerService.getPaperSize(printerName)
-              : printerService.getCurrentPaperSize();
+      // Obtener el tamaño de papel desde la configuración guardada
+      final paperSize = await _getPaperSizeForPrinter(printerName);
 
       final generator = Generator(paperSize, profile);
-      print('📄 Usando tamaño de papel para comanda: ${paperSize.toString()}');
+      print(
+        '📄 Usando tamaño de papel para comanda: ${_getPaperSizeDisplayName(paperSize)}',
+      );
 
       // Establece la tabla de caracteres correcta
       bytes += generator.setGlobalCodeTable('(Latvian)');
@@ -185,32 +229,32 @@ class PrintJobService {
       );
       bytes += generator.emptyLines(2);
       bytes += generator.text(
-        'Fecha: ${comandaData.fecha}       Hora: ${comandaData.hora}',
+        'Fecha:${comandaData.fecha} - Hora:${comandaData.hora}',
         styles: baseStyle.copyWith(align: PosAlign.center),
       );
       bytes += generator.emptyLines(1);
-      bytes += generateLine(generator: generator);
+      bytes += generateLine(generator: generator, paperSize: paperSize);
 
       // Cabecera de detalles
       bytes += generator.row([
         PosColumn(
-          text: 'Cant.',
+          text: 'Cant',
           width: 2,
           styles: baseStyle.copyWith(align: PosAlign.left, bold: true),
         ),
         PosColumn(
           text: 'UMD',
-          width: 2,
+          width: 3,
           styles: baseStyle.copyWith(align: PosAlign.left, bold: true),
         ),
         PosColumn(
           text: 'Descripcion',
-          width: 8,
+          width: 7,
           styles: baseStyle.copyWith(align: PosAlign.left, bold: true),
         ),
       ]);
 
-      bytes += generateLine(generator: generator);
+      bytes += generateLine(generator: generator, paperSize: paperSize);
       bytes += generator.emptyLines(1);
 
       // Detalles
@@ -223,12 +267,12 @@ class PrintJobService {
           ),
           PosColumn(
             text: detalle.umedNombre ?? "",
-            width: 2,
+            width: 3,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
           PosColumn(
             text: formatearTexto(detalle.descripcion ?? "", 25),
-            width: 8,
+            width: 7,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
         ]);
@@ -277,29 +321,56 @@ class PrintJobService {
 
   Future<bool> printTest([String? printerName]) async {
     try {
+      print('🧪 ===== INICIANDO IMPRESIÓN DE PRUEBA =====');
+      print('🧪 Impresora especificada: $printerName');
+      print(
+        '🧪 Impresora seleccionada en servicio: ${printerService.selectedPrinter?.deviceName}',
+      );
+      print(
+        '🧪 Impresoras conectadas: ${printerService.connectedPrinters.keys.join(", ")}',
+      );
+
+      // Verificar si hay impresoras disponibles
+      if (printerName == null && printerService.selectedPrinter == null) {
+        print('❌ No hay impresora seleccionada ni especificada para la prueba');
+        return false;
+      }
+
+      String targetPrinter =
+          printerName ??
+          printerService.selectedPrinter?.deviceName ??
+          'Desconocida';
+      print('🎯 Impresora objetivo: $targetPrinter');
+
       // Generar los bytes para la impresión
       List<int> bytes = [];
       final profile = await CapabilityProfile.load();
 
-      // Usar el tamaño de papel detectado automáticamente
-      final paperSize =
-          printerName != null
-              ? printerService.getPaperSize(printerName)
-              : printerService.detectedPaperSize;
+      // Obtener el tamaño de papel desde la configuración guardada
+      final paperSize = await _getPaperSizeForPrinter(printerName);
 
       final generator = Generator(paperSize, profile);
-      print('📄 Usando tamaño de papel para prueba: ${paperSize.toString()}');
+      print(
+        '📄 Usando tamaño de papel para prueba: ${_getPaperSizeDisplayName(paperSize)}',
+      );
 
       bytes += generator.setGlobalCodeTable('CP1252');
       // Encabezado
       bytes += generator.reset();
 
+      bytes += generator.text('=== PRUEBA DE IMPRESION ===');
+      bytes += generator.text(
+        'Fecha: ${DateTime.now().toString().substring(0, 19)}',
+      );
+      bytes += generator.text('Impresora: $targetPrinter');
+      bytes += generator.text('Tamaño papel: ${paperSize.toString()}');
+      bytes += generator.text('');
       bytes += generator.text(
         'Regular: aA bB cC dD eE fF gG hH iI jJ kK lL mM nN oO pP qQ rR sS tT uU vV wW xX yY zZ',
       );
       bytes += generator.text('Special 1: àÀ èÈ éÉ ûÛ üÜ çÇ ôÔ');
       bytes += generator.text('Special 2: blåbærgrød');
-
+      bytes += generator.text('');
       bytes += generator.text('Bold text', styles: PosStyles(bold: true));
       bytes += generator.text('Reverse text', styles: PosStyles(reverse: true));
       bytes += generator.text(
@@ -326,12 +397,20 @@ class PrintJobService {
         styles: PosStyles(height: PosTextSize.size2, width: PosTextSize.size2),
       );
 
+      bytes += generator.text('');
+      bytes += generator.text('=== FIN DE PRUEBA ===');
+
       bytes += generator.feed(2);
       bytes += generator.cut();
 
+      print('📋 Bytes generados para impresión: ${bytes.length} bytes');
+
       int copias = 1;
+      bool printSuccess = false;
+
       for (int i = 0; i < copias; i++) {
         if (printerName != null) {
+          print('🖨️ Imprimiendo en impresora específica: $printerName');
           final success = await printerService.printBytesToPrinter(
             bytes,
             printerName,
@@ -340,13 +419,28 @@ class PrintJobService {
             print('❌ Error al imprimir prueba en $printerName');
             return false;
           }
+          print('✅ Prueba impresa exitosamente en $printerName');
+          printSuccess = true;
         } else {
-          await printerService.printBytes(bytes);
+          print(
+            '🖨️ Imprimiendo en impresora seleccionada: ${printerService.selectedPrinter?.deviceName}',
+          );
+          try {
+            await printerService.printBytes(bytes);
+            print('✅ Prueba enviada a impresora seleccionada');
+            printSuccess = true;
+          } catch (e) {
+            print('❌ Error al enviar a impresora seleccionada: $e');
+            return false;
+          }
         }
       }
-      return true;
-    } catch (e) {
-      print('Error imprimiendo prueba: $e');
+
+      print('🧪 ===== FIN IMPRESIÓN DE PRUEBA - Éxito: $printSuccess =====');
+      return printSuccess;
+    } catch (e, stackTrace) {
+      print('❌ Error imprimiendo prueba: $e');
+      print('📋 Stack trace: $stackTrace');
       return false;
     }
   }
@@ -372,13 +466,12 @@ class PrintJobService {
       // Usar el mismo perfil que en printDirectRequest
       final profile = await CapabilityProfile.load(name: 'ITPP047');
 
-      // Usar el tamaño de papel actual (detectado o personalizado)
-      final generator = Generator(
-        printerService.getCurrentPaperSize(),
-        profile,
-      );
+      // Obtener el tamaño de papel desde la configuración guardada
+      final paperSize = await _getPaperSizeForPrinter(printerName);
+
+      final generator = Generator(paperSize, profile);
       print(
-        '📄 Usando tamaño de papel para sorteo: ${printerService.getPaperSizeDescription()}',
+        '📄 Usando tamaño de papel para sorteo: ${_getPaperSizeDisplayName(paperSize)}',
       );
 
       // Establece la tabla de caracteres correcta
@@ -541,9 +634,13 @@ class PrintJobService {
       // Usar el mismo perfil que en printDirectRequest
       final profile = await CapabilityProfile.load(name: 'ITPP047');
 
-      // Usar el tamaño de papel detectado automáticamente
-      final generator = Generator(printerService.detectedPaperSize, profile);
-      print('📄 Usando tamaño de papel: ${printerService.detectedPaperSize}');
+      // Obtener el tamaño de papel desde la configuración guardada
+      final paperSize = await _getPaperSizeForPrinter(printerName);
+
+      final generator = Generator(paperSize, profile);
+      print(
+        '📄 Usando tamaño de papel para prefactura: ${_getPaperSizeDisplayName(paperSize)}',
+      );
 
       // Establece la tabla de caracteres correcta
       bytes += generator.setGlobalCodeTable('(Latvian)');
@@ -562,7 +659,7 @@ class PrintJobService {
         styles: baseStyle.copyWith(align: PosAlign.center),
       );
       bytes += generator.emptyLines(2);
-      bytes += generateLine(generator: generator);
+      bytes += generateLine(generator: generator, paperSize: paperSize);
 
       // Detalles
       bytes += generator.row([
@@ -588,7 +685,7 @@ class PrintJobService {
         ),
       ]);
 
-      bytes += generateLine(generator: generator);
+      bytes += generateLine(generator: generator, paperSize: paperSize);
 
       for (var detalle in prefacturaData.detalles) {
         bytes += generator.row([
@@ -625,7 +722,7 @@ class PrintJobService {
       }
 
       // Totales
-      bytes += generateLine(generator: generator);
+      bytes += generateLine(generator: generator, paperSize: paperSize);
       bytes += generator.emptyLines(1);
 
       bytes += generator.row([
@@ -708,25 +805,25 @@ class PrintJobService {
         'Datos',
         styles: baseStyle.copyWith(align: PosAlign.center),
       );
-      bytes += generateLine(generator: generator);
+      bytes += generateLine(generator: generator, paperSize: paperSize);
       bytes += generator.text(
-        'C.I: ____________________________________',
+        'C.I: ___________________________',
         styles: baseStyle,
       );
       bytes += generator.text(
-        'Nombre: _________________________________',
+        'Nombre: ________________________',
         styles: baseStyle,
       );
       bytes += generator.text(
-        'DIR: ____________________________________',
+        'DIR: ___________________________',
         styles: baseStyle,
       );
       bytes += generator.text(
-        'Telefono: _______________________________',
+        'Telefono: ______________________',
         styles: baseStyle,
       );
       bytes += generator.text(
-        'Propina: ________________________________',
+        'Propina: _______________________',
         styles: baseStyle,
       );
       bytes += generator.emptyLines(3);
@@ -774,10 +871,12 @@ class PrintJobService {
       // Usar el mismo perfil que en printDirectRequest
       final profile = await CapabilityProfile.load(name: 'ITPP047');
 
-      // Usar el tamaño de papel detectado automáticamente
-      final generator = Generator(printerService.detectedPaperSize, profile);
+      // Obtener el tamaño de papel desde la configuración guardada
+      final paperSize = await _getPaperSizeForPrinter(printerName);
+
+      final generator = Generator(paperSize, profile);
       print(
-        '📄 Usando tamaño de papel para factura: ${printerService.detectedPaperSize}',
+        '📄 Usando tamaño de papel para factura: ${_getPaperSizeDisplayName(paperSize)}',
       );
 
       // Establece la tabla de caracteres correcta
@@ -820,7 +919,7 @@ class PrintJobService {
         styles: baseStyle.copyWith(align: PosAlign.center),
       );
       bytes += generator.emptyLines(1);
-      bytes += generateLine(generator: generator);
+      bytes += generateLine(generator: generator, paperSize: paperSize);
       bytes += generator.text(
         'Cliente: ${ventaData.cliente ?? ''}',
         styles: baseStyle,
@@ -838,7 +937,7 @@ class PrintJobService {
         styles: baseStyle,
       );
       bytes += generator.emptyLines(1);
-      bytes += generateLine(generator: generator);
+      bytes += generateLine(generator: generator, paperSize: paperSize);
 
       bytes += generator.text(
         'FACTURA ${ventaData.numeroFactura ?? ''}',
@@ -847,7 +946,7 @@ class PrintJobService {
       bytes += generator.text('Clave de acceso', styles: baseStyle);
       bytes += generator.text(ventaData.claveAcceso ?? '', styles: baseStyle);
       bytes += generator.emptyLines(1);
-      bytes += generateLine(generator: generator);
+      bytes += generateLine(generator: generator, paperSize: paperSize);
       bytes += generator.emptyLines(1);
 
       // Detalles
@@ -873,7 +972,7 @@ class PrintJobService {
           styles: baseStyle.copyWith(align: PosAlign.left, bold: true),
         ),
       ]);
-      bytes += generateLine(generator: generator);
+      bytes += generateLine(generator: generator, paperSize: paperSize);
       for (var detalle in ventaData.detalles) {
         bytes += generator.row([
           PosColumn(
@@ -910,7 +1009,7 @@ class PrintJobService {
       }
 
       // Totales
-      bytes += generateLine(generator: generator);
+      bytes += generateLine(generator: generator, paperSize: paperSize);
       bytes += generator.emptyLines(1);
 
       // Usar rows para todos los totales como en printDirectRequest
@@ -1002,7 +1101,7 @@ class PrintJobService {
       ]);
 
       bytes += generator.emptyLines(1);
-      bytes += generateLine(generator: generator);
+      bytes += generateLine(generator: generator, paperSize: paperSize);
       bytes += generator.row([
         PosColumn(
           text: 'Forma de pago',
@@ -1015,7 +1114,7 @@ class PrintJobService {
           styles: baseStyle.copyWith(align: PosAlign.left),
         ),
       ]);
-      bytes += generateLine(generator: generator);
+      bytes += generateLine(generator: generator, paperSize: paperSize);
 
       for (var formaPago in ventaData.formasPago) {
         bytes += generator.row([
@@ -1114,9 +1213,13 @@ class PrintJobService {
       // Usar el perfil compatible con caracteres especiales
       final profile = await CapabilityProfile.load(name: 'ITPP047');
 
-      // Usar el tamaño de papel detectado automáticamente
-      final generator = Generator(printerService.detectedPaperSize, profile);
-      print('📄 Usando tamaño de papel: ${printerService.detectedPaperSize}');
+      // Obtener el tamaño de papel desde la configuración guardada
+      final paperSize = await _getPaperSizeForPrinter(printerName);
+
+      final generator = Generator(paperSize, profile);
+      print(
+        '📄 Usando tamaño de papel: ${_getPaperSizeDisplayName(paperSize)}',
+      );
 
       // Establece la tabla de caracteres correcta
       bytes += generator.setGlobalCodeTable('(Latvian)');
@@ -1159,7 +1262,7 @@ class PrintJobService {
         styles: baseStyle.copyWith(align: PosAlign.center),
       );
       bytes += generator.emptyLines(1);
-      bytes += generateLine(generator: generator);
+      bytes += generateLine(generator: generator, paperSize: paperSize);
       bytes += generator.text(
         'Cliente: ${dataMap['cliente'] ?? ''}',
         styles: baseStyle,
@@ -1177,7 +1280,7 @@ class PrintJobService {
         styles: baseStyle,
       );
       bytes += generator.emptyLines(1);
-      bytes += generateLine(generator: generator);
+      bytes += generateLine(generator: generator, paperSize: paperSize);
 
       bytes += generator.text(
         'FACTURA ${dataMap['numeroFactura'] ?? ''}',
@@ -1186,7 +1289,7 @@ class PrintJobService {
       bytes += generator.text('Clave de acceso', styles: baseStyle);
       bytes += generator.text(dataMap['claveAcceso'] ?? '', styles: baseStyle);
       bytes += generator.emptyLines(1);
-      bytes += generateLine(generator: generator);
+      bytes += generateLine(generator: generator, paperSize: paperSize);
       bytes += generator.emptyLines(1);
 
       // Cabecera de detalles
@@ -1212,7 +1315,7 @@ class PrintJobService {
           styles: baseStyle.copyWith(align: PosAlign.left, bold: true),
         ),
       ]);
-      bytes += generateLine(generator: generator);
+      bytes += generateLine(generator: generator, paperSize: paperSize);
 
       // Procesar detalles
       if (dataMap['detalles'] != null && dataMap['detalles'] is List) {
@@ -1270,7 +1373,7 @@ class PrintJobService {
       }
 
       // Totales
-      bytes += generateLine(generator: generator);
+      bytes += generateLine(generator: generator, paperSize: paperSize);
       bytes += generator.emptyLines(1);
 
       // SUBTOTAL 0%
@@ -1476,7 +1579,7 @@ class PrintJobService {
       ]);
 
       bytes += generator.emptyLines(1);
-      bytes += generateLine(generator: generator);
+      bytes += generateLine(generator: generator, paperSize: paperSize);
       bytes += generator.row([
         PosColumn(
           text: 'Forma de pago',
@@ -1566,7 +1669,7 @@ class PrintJobService {
 
   List<int> generateLine({
     required Generator generator,
-    PaperSize paperSize = PaperSize.mm80,
+    required PaperSize paperSize,
     String char = '-',
     PosAlign align = PosAlign.left,
     PosStyles? style,
@@ -1592,397 +1695,6 @@ class PrintJobService {
   }
 
   /// Imprime una solicitud en formato directo
-  Future<bool> printDirectRequest(
-    DirectPrintRequest request, [
-    String? printerName,
-  ]) async {
-    try {
-      // Generar los bytes para la impresión
-      List<int> bytes = [];
-
-      // Usa el perfil compatible con CP1252
-      final profile = await CapabilityProfile.load(name: 'ITPP047');
-      final generator = Generator(PaperSize.mm80, profile);
-
-      // Establece la tabla de caracteres correcta
-      bytes += generator.setGlobalCodeTable('(Latvian)');
-      bytes += generator.reset();
-
-      // Estilo base con soporte para tildes
-      final baseStyle = PosStyles(codeTable: '(Latvian)');
-
-      // Cabecera
-      bytes += generator.text(
-        request.sucursal,
-        styles: baseStyle.copyWith(align: PosAlign.center, bold: true),
-      );
-      bytes += generator.text(
-        request.empresa,
-        styles: baseStyle.copyWith(align: PosAlign.center),
-      );
-      bytes += generator.text(
-        request.nombre,
-        styles: baseStyle.copyWith(align: PosAlign.center),
-      );
-      bytes += generator.text(
-        'RUC ${request.ruc}',
-        styles: baseStyle.copyWith(align: PosAlign.center),
-      );
-      bytes += generator.text(
-        request.regimen,
-        styles: baseStyle.copyWith(align: PosAlign.center),
-      );
-
-      bytes += generator.emptyLines(1);
-      bytes += generator.text(request.direccion, styles: baseStyle);
-      bytes += generator.text('Tel: ${request.telefono}', styles: baseStyle);
-      bytes += generator.emptyLines(1);
-      bytes += generator.text(
-        'AMBIENTE ${request.ambiente}',
-        styles: baseStyle.copyWith(align: PosAlign.center),
-      );
-      bytes += generator.emptyLines(1);
-      bytes += generateLine(generator: generator);
-      bytes += generator.text('Cliente: ${request.cliente}', styles: baseStyle);
-      bytes += generator.text(
-        'Ruc/Ci: ${request.rucCliente}',
-        styles: baseStyle,
-      );
-      bytes += generator.text('Fecha: ${request.fecha}', styles: baseStyle);
-      bytes += generator.text(
-        'Direccion: ${request.direccionCliente}',
-        styles: baseStyle,
-      );
-      bytes += generator.emptyLines(1);
-      bytes += generateLine(generator: generator);
-
-      bytes += generator.text(
-        'FACTURA ${request.numeroFactura}',
-        styles: baseStyle.copyWith(bold: true),
-      );
-      bytes += generator.text('Clave de acceso', styles: baseStyle);
-      bytes += generator.text(request.claveAcceso, styles: baseStyle);
-      bytes += generator.emptyLines(1);
-
-      bytes += generateLine(generator: generator);
-
-      bytes += generator.emptyLines(1);
-
-      bytes += generator.row([
-        PosColumn(
-          text: 'CANT.',
-          width: 2,
-          styles: baseStyle.copyWith(align: PosAlign.left, bold: true),
-        ),
-        PosColumn(
-          text: 'DETALLE',
-          width: 5,
-          styles: baseStyle.copyWith(align: PosAlign.left, bold: true),
-        ),
-        PosColumn(
-          text: 'PRECIO',
-          width: 2,
-          styles: baseStyle.copyWith(align: PosAlign.left, bold: true),
-        ),
-        PosColumn(
-          text: 'TOTAL',
-          width: 3,
-          styles: baseStyle.copyWith(align: PosAlign.left, bold: false),
-        ),
-      ]);
-
-      bytes += generateLine(generator: generator);
-
-      for (var detalle in request.detalles) {
-        String descripcionFormateada = formatearTexto(detalle.descripcion, 25);
-
-        bytes += generator.row([
-          PosColumn(
-            text: detalle.cant.toStringAsFixed(2),
-            width: 2,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-          PosColumn(
-            text: descripcionFormateada,
-            width: 5,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-          PosColumn(
-            text: detalle.valUnitario,
-            width: 2,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-          PosColumn(
-            text: detalle.valTotal,
-            width: 3,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-        ]);
-
-        if (detalle.observacion.isNotEmpty) {
-          bytes += generator.emptyLines(1);
-          bytes += generator.text(
-            '         ${detalle.observacion}                   ',
-            styles: baseStyle,
-          );
-          bytes += generator.emptyLines(1);
-        }
-      }
-
-      bytes += generateLine(generator: generator);
-      bytes += generator.emptyLines(1);
-      bytes += generator.row([
-        PosColumn(
-          text: 'SUBTOTAL 0%:',
-          width: 9,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-        PosColumn(
-          text: request.subTotal0,
-          width: 3,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-      ]);
-
-      if ((double.tryParse(request.subtotal5) ?? 0) > 0) {
-        bytes += generator.row([
-          PosColumn(
-            text: 'SUBTOTAL 5%:',
-            width: 9,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-          PosColumn(
-            text: request.subtotal5,
-            width: 3,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-        ]);
-      }
-
-      if ((double.tryParse(request.subTotal8) ?? 0) > 0) {
-        bytes += generator.row([
-          PosColumn(
-            text: 'SUBTOTAL 8%:',
-            width: 9,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-          PosColumn(
-            text: request.subTotal8,
-            width: 3,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-        ]);
-      }
-
-      if ((double.tryParse(request.subtotal12) ?? 0) > 0) {
-        bytes += generator.row([
-          PosColumn(
-            text: 'SUBTOTAL 12%:',
-            width: 9,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-          PosColumn(
-            text: request.subtotal12,
-            width: 3,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-        ]);
-      }
-
-      if ((double.tryParse(request.subtotal15) ?? 0) > 0) {
-        bytes += generator.row([
-          PosColumn(
-            text: 'SUBTOTAL 15%:',
-            width: 9,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-          PosColumn(
-            text: request.subtotal15,
-            width: 3,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-        ]);
-      }
-
-      bytes += generator.row([
-        PosColumn(
-          text: 'SUBTOTAL SIN IMPUESTOS:',
-          width: 9,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-        PosColumn(
-          text: request.subTotalSI,
-          width: 3,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-      ]);
-
-      if ((double.tryParse(request.totalDescuento) ?? 0) > 0) {
-        bytes += generator.row([
-          PosColumn(
-            text: 'TOTAL Descuento:',
-            width: 9,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-          PosColumn(
-            text: request.totalDescuento,
-            width: 3,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-        ]);
-      }
-
-      if ((double.tryParse(request.ice) ?? 0) > 0) {
-        bytes += generator.row([
-          PosColumn(
-            text: 'ICE:',
-            width: 9,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-          PosColumn(
-            text: request.ice,
-            width: 3,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-        ]);
-      }
-
-      if ((double.tryParse(request.iva05) ?? 0) > 0) {
-        bytes += generator.row([
-          PosColumn(
-            text: 'IVA 5%:',
-            width: 9,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-          PosColumn(
-            text: request.iva05,
-            width: 3,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-        ]);
-      }
-
-      if ((double.tryParse(request.iva8) ?? 0) > 0) {
-        bytes += generator.row([
-          PosColumn(
-            text: 'IVA 8%:',
-            width: 9,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-          PosColumn(
-            text: request.iva8,
-            width: 3,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-        ]);
-      }
-
-      if ((double.tryParse(request.iva12) ?? 0) > 0) {
-        bytes += generator.row([
-          PosColumn(
-            text: 'IVA 12%:',
-            width: 9,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-          PosColumn(
-            text: request.iva12,
-            width: 3,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-        ]);
-      }
-
-      if ((double.tryParse(request.iva15) ?? 0) > 0) {
-        bytes += generator.row([
-          PosColumn(
-            text: 'IVA 15%:',
-            width: 9,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-          PosColumn(
-            text: request.iva15,
-            width: 3,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-        ]);
-      }
-
-      bytes += generator.row([
-        PosColumn(
-          text: 'TOTAL:',
-          width: 9,
-          styles: baseStyle.copyWith(align: PosAlign.left, bold: true),
-        ),
-        PosColumn(
-          text: request.total,
-          width: 3,
-          styles: baseStyle.copyWith(align: PosAlign.left, bold: true),
-        ),
-      ]);
-      bytes += generator.setStyles(baseStyle.copyWith(bold: false));
-
-      bytes += generator.emptyLines(1);
-      bytes += generateLine(generator: generator);
-      bytes += generator.row([
-        PosColumn(
-          text: 'Forma de pago',
-          width: 9,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-        PosColumn(
-          text: 'Valor',
-          width: 3,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-      ]);
-      bytes += generator.emptyLines(1);
-
-      for (var formaPago in request.formaPago) {
-        bytes += generator.row([
-          PosColumn(
-            text: formaPago.detalle,
-            width: 8,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-          PosColumn(
-            text: formaPago.importe.toStringAsFixed(2).padLeft(8),
-            width: 4,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-        ]);
-      }
-
-      bytes += generator.emptyLines(2);
-      bytes += generator.text('Vende: ${request.empleado}', styles: baseStyle);
-      bytes += generator.emptyLines(1);
-      bytes += generator.text(
-        'Para revisar su factura electrónica ingrese a su correo:',
-        styles: baseStyle,
-      );
-      bytes += generator.emptyLines(1);
-      bytes += generator.cut(mode: PosCutMode.full);
-
-      for (int i = 0; i < request.copias; i++) {
-        if (printerName != null) {
-          final success = await printerService.printBytesToPrinter(
-            bytes,
-            printerName,
-          );
-          if (!success) {
-            print('❌ Error al imprimir solicitud directa en $printerName');
-            return false;
-          }
-        } else {
-          await printerService.printBytes(bytes);
-        }
-      }
-
-      return true;
-    } catch (e) {
-      print('Error imprimiendo solicitud directa: $e');
-      return false;
-    }
-  }
 
   // Método para formatear texto largo, respetando saltos de línea y ajustando al ancho
   String formatearTexto(String? texto, int anchoMax) {

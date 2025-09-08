@@ -4,6 +4,7 @@ import 'package:anfibius_uwu/services/websocket_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_pos_printer_platform_image_3/flutter_pos_printer_platform_image_3.dart';
+import 'package:flutter_esc_pos_utils/flutter_esc_pos_utils.dart';
 
 class Dispositivos extends StatefulWidget {
   const Dispositivos({super.key});
@@ -18,29 +19,15 @@ class _DispositivosState extends State<Dispositivos> {
   @override
   void initState() {
     super.initState();
-    // Configurar el callback para imprimir mensajes automáticamente
+    // Configurar el monitoreo de cambios de conexión
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final webSocketService = Provider.of<WebSocketService>(
-        context,
-        listen: false,
-      );
       final printerService = Provider.of<PrinterService>(
-        context,
-        listen: false,
-      );
-      final printJobService = Provider.of<PrintJobService>(
         context,
         listen: false,
       );
 
       // Guardar el estado inicial de conexión
       _lastConnectionState = printerService.isConnected;
-
-      webSocketService.onNewMessage = (message) {
-        if (printerService.currentPrinter != null) {
-          printJobService.processPrintRequest(message);
-        }
-      };
     });
   }
 
@@ -48,54 +35,6 @@ class _DispositivosState extends State<Dispositivos> {
   void _checkConnectionChanges() {
     final printerService = Provider.of<PrinterService>(context, listen: false);
     final bool currentConnectionState = printerService.isConnected;
-
-    // Si cambió el estado de conexión
-    // if (currentConnectionState != _lastConnectionState &&
-    //     printerService.currentPrinter != null) {
-    //   if (currentConnectionState && !_lastConnectionState) {
-    //     // Se conectó la impresora
-    //     WidgetsBinding.instance.addPostFrameCallback((_) {
-    //       if (context.mounted) {
-    //         ScaffoldMessenger.of(context).showSnackBar(
-    //           SnackBar(
-    //             content: Text(
-    //               'Impresora ${currentPrinterName ?? ''} conectada',
-    //             ),
-    //             backgroundColor: Colors.green,
-    //             duration: const Duration(seconds: 2),
-    //           ),
-    //         );
-    //         NotificationsService().showNotification(
-    //           id: 1,
-    //           title: 'Impresora conectada',
-    //           body: 'La impresora ${_lastPrinterName ?? ''} se ha conectado',
-    //           payload: 'printer_connected',
-    //         );
-    //       }
-    //     });
-    //   } else if (!currentConnectionState && _lastConnectionState) {
-    //     // Se desconectó la impresora
-    //     WidgetsBinding.instance.addPostFrameCallback((_) {
-    //       if (context.mounted) {
-    //         ScaffoldMessenger.of(context).showSnackBar(
-    //           SnackBar(
-    //             content: Text(
-    //               'Impresora ${_lastPrinterName ?? ''} desconectada',
-    //             ),
-    //             backgroundColor: Colors.red,
-    //             duration: const Duration(seconds: 2),
-    //           ),
-    //         );
-    //         NotificationsService().showNotification(
-    //           id: 1,
-    //           title: 'Impresora desconectada',
-    //           body: 'La impresora ${_lastPrinterName ?? ''} se ha desconectado',
-    //           payload: 'printer_disconnected',
-    //         );
-    //       }
-    //     });
-    //   }
-    // }
 
     // Actualizar los valores para la próxima comparación
     _lastConnectionState = currentConnectionState;
@@ -625,45 +564,54 @@ class _DispositivosState extends State<Dispositivos> {
     try {
       // Convertir a string y procesar el nombre
       String paperSizeStr = paperSize.toString();
+      print('🔍 Debug tamaño de papel - String recibido: "$paperSizeStr"');
 
       // Detectar el formato específico: Instance of 'PaperSize' o PaperSize.mm80
       if (paperSizeStr.contains('PaperSize.')) {
         // Formato esperado: PaperSize.mm80
         String value = paperSizeStr.split('.').last;
+        print('🔍 Debug - Valor extraído: "$value"');
         return _formatPaperSizeName(value);
       } else if (paperSizeStr.contains("Instance of 'PaperSize'")) {
         // Usar una estrategia alternativa
         // Intenta acceder al índice del enum o algún otro identificador disponible
         int? index;
         try {
-          index = paperSize.value;
-        } catch (_) {}
-
-        if (index != null) {
-          switch (index) {
-            case 0:
-              return '58mm (Ticket)';
-            case 1:
-              return '80mm (Estándar)';
-            case 2:
-              return '72mm';
-            case 3:
-              return 'A4';
-            default:
-              return 'Tamaño $index';
+          index = paperSize.index; // Cambiar de .value a .index para enums
+          print('🔍 Debug - Índice del enum: $index');
+        } catch (e) {
+          print('🔍 Debug - No se pudo obtener índice: $e');
+          // Intentar con .value como fallback
+          try {
+            index = paperSize.value;
+            print('🔍 Debug - Valor del enum: $index');
+          } catch (e2) {
+            print('🔍 Debug - Tampoco se pudo obtener valor: $e2');
           }
         }
 
-        // Si no podemos determinarlo, consultamos la configuración del servicio
-        // de impresión directamente
-        return '80mm (Por defecto)';
+        // Como último recurso, intentar comparar directamente con los valores conocidos
+        if (paperSize == PaperSize.mm58) {
+          return '58mm (Ticket)';
+        } else if (paperSize == PaperSize.mm80) {
+          return '80mm (Estándar)';
+        } else if (paperSize == PaperSize.mm72) {
+          return '72mm';
+        }
+
+        // Si no podemos determinarlo de ninguna manera
+        print(
+          '⚠️ No se pudo determinar el tamaño de papel, usando valor por defecto',
+        );
+        return 'Tamaño no determinado';
       }
 
       // Si llegamos aquí, usamos el string directamente
+      print('🔍 Debug - Procesando string directamente: "$paperSizeStr"');
       return _formatPaperSizeName(paperSizeStr);
     } catch (e) {
-      print('Error procesando tamaño de papel: $e');
-      return '80mm (Por defecto)';
+      print('❌ Error procesando tamaño de papel: $e');
+      return 'Error al determinar tamaño';
     }
   }
 
