@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:anfibius_uwu/services/print_job_service.dart';
 import 'package:anfibius_uwu/services/printer_service.dart';
 import 'package:anfibius_uwu/services/websocket_service.dart';
@@ -363,16 +364,112 @@ class _DispositivosState extends State<Dispositivos> {
                                                             context,
                                                             listen: false,
                                                           );
-                                                      // Modificar el JSON para incluir el nombre de la impresora
-                                                      final lastMessage =
-                                                          webSocketService
-                                                              .historyItems
-                                                              .last
-                                                              .rawJson;
-                                                      printJobService
-                                                          .processPrintRequest(
-                                                            lastMessage,
+
+                                                      // Buscar el último mensaje que fue enviado a esta impresora específica
+                                                      String?
+                                                      lastMessageForThisPrinter;
+                                                      for (
+                                                        int i =
+                                                            webSocketService
+                                                                .historyItems
+                                                                .length -
+                                                            1;
+                                                        i >= 0;
+                                                        i--
+                                                      ) {
+                                                        final item =
+                                                            webSocketService
+                                                                .historyItems[i];
+                                                        try {
+                                                          final Map<
+                                                            String,
+                                                            dynamic
+                                                          >
+                                                          json = jsonDecode(
+                                                            item.rawJson,
                                                           );
+                                                          final String
+                                                          targetPrinter =
+                                                              json['printerName']
+                                                                  ?.toString() ??
+                                                              '';
+
+                                                          // Si el mensaje especifica esta impresora, o si no especifica ninguna impresora (compatibilidad)
+                                                          if (targetPrinter ==
+                                                                  printerName ||
+                                                              targetPrinter
+                                                                  .isEmpty) {
+                                                            lastMessageForThisPrinter =
+                                                                item.rawJson;
+                                                            break;
+                                                          }
+                                                        } catch (e) {
+                                                          // Si hay error parseando, usar el mensaje tal como está
+                                                          lastMessageForThisPrinter =
+                                                              item.rawJson;
+                                                          break;
+                                                        }
+                                                      }
+
+                                                      if (lastMessageForThisPrinter !=
+                                                          null) {
+                                                        // Modificar el JSON para asegurar que se imprima en esta impresora específica
+                                                        try {
+                                                          Map<String, dynamic>
+                                                          modifiedJson = jsonDecode(
+                                                            lastMessageForThisPrinter,
+                                                          );
+                                                          modifiedJson['printerName'] =
+                                                              printerName;
+
+                                                          print(
+                                                            '🖨️ Reimprimiendo último documento en: $printerName',
+                                                          );
+                                                          ScaffoldMessenger.of(
+                                                            context,
+                                                          ).showSnackBar(
+                                                            SnackBar(
+                                                              content: Text(
+                                                                'Reimprimiendo en $printerName...',
+                                                              ),
+                                                              backgroundColor:
+                                                                  Colors.blue,
+                                                              duration:
+                                                                  const Duration(
+                                                                    seconds: 2,
+                                                                  ),
+                                                            ),
+                                                          );
+
+                                                          printJobService
+                                                              .processPrintRequest(
+                                                                jsonEncode(
+                                                                  modifiedJson,
+                                                                ),
+                                                              );
+                                                        } catch (e) {
+                                                          // Si no se puede parsear, enviar directamente
+                                                          print(
+                                                            '🖨️ Enviando documento directamente a: $printerName',
+                                                          );
+                                                          printJobService
+                                                              .processPrintRequest(
+                                                                lastMessageForThisPrinter,
+                                                              );
+                                                        }
+                                                      } else {
+                                                        ScaffoldMessenger.of(
+                                                          context,
+                                                        ).showSnackBar(
+                                                          SnackBar(
+                                                            content: Text(
+                                                              'No hay documentos previos para $printerName',
+                                                            ),
+                                                            backgroundColor:
+                                                                Colors.orange,
+                                                          ),
+                                                        );
+                                                      }
                                                     }
                                                     : null,
                                             tooltip: 'Imprimir último',
@@ -411,8 +508,7 @@ class _DispositivosState extends State<Dispositivos> {
                               icon: const Icon(Icons.print),
                               label: const Text("Imprimir último"),
                               onPressed:
-                                  webSocketService.historyItems.isNotEmpty &&
-                                          printerService.currentPrinter != null
+                                  webSocketService.historyItems.isNotEmpty
                                       ? () {
                                         if (webSocketService
                                             .historyItems
@@ -422,12 +518,70 @@ class _DispositivosState extends State<Dispositivos> {
                                                 context,
                                                 listen: false,
                                               );
-                                          printJobService.processPrintRequest(
-                                            webSocketService
-                                                .historyItems
-                                                .last
-                                                .rawJson,
-                                          );
+
+                                          final lastItem =
+                                              webSocketService
+                                                  .historyItems
+                                                  .last;
+
+                                          // Intentar determinar la impresora original del mensaje
+                                          try {
+                                            final Map<String, dynamic> json =
+                                                jsonDecode(lastItem.rawJson);
+                                            final String originalPrinter =
+                                                json['printerName']
+                                                    ?.toString() ??
+                                                '';
+
+                                            if (originalPrinter.isNotEmpty &&
+                                                printerService
+                                                    .isPrinterConnected(
+                                                      originalPrinter,
+                                                    )) {
+                                              // Imprimir en la impresora original si está conectada
+                                              print(
+                                                '🖨️ Reimprimiendo en impresora original: $originalPrinter',
+                                              );
+                                              printJobService
+                                                  .processPrintRequest(
+                                                    lastItem.rawJson,
+                                                  );
+                                            } else if (printerService
+                                                    .currentPrinter !=
+                                                null) {
+                                              // Si no hay impresora original o no está conectada, usar la actual
+                                              print(
+                                                '🖨️ Imprimiendo en impresora actual: ${printerService.currentPrinter?.deviceName}',
+                                              );
+                                              Map<String, dynamic>
+                                              modifiedJson = json;
+                                              modifiedJson['printerName'] =
+                                                  printerService
+                                                      .currentPrinter
+                                                      ?.deviceName ??
+                                                  '';
+                                              printJobService
+                                                  .processPrintRequest(
+                                                    jsonEncode(modifiedJson),
+                                                  );
+                                            } else {
+                                              print(
+                                                '❌ No hay impresoras disponibles para reimprimir',
+                                              );
+                                            }
+                                          } catch (e) {
+                                            // Si hay error parseando, usar la impresora actual
+                                            if (printerService.currentPrinter !=
+                                                null) {
+                                              print(
+                                                '🖨️ Error parseando, usando impresora actual: ${printerService.currentPrinter?.deviceName}',
+                                              );
+                                              printJobService
+                                                  .processPrintRequest(
+                                                    lastItem.rawJson,
+                                                  );
+                                            }
+                                          }
                                         }
                                       }
                                       : null,
@@ -470,26 +624,151 @@ class _DispositivosState extends State<Dispositivos> {
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                    subtitle: Text(
-                                      "Fecha: ${item.formattedTimestamp}",
-                                      style: const TextStyle(fontSize: 12),
+                                    subtitle: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          "Fecha: ${item.formattedTimestamp}",
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                        // Mostrar la impresora original si está disponible
+                                        Builder(
+                                          builder: (context) {
+                                            try {
+                                              final Map<String, dynamic> json =
+                                                  jsonDecode(item.rawJson);
+                                              final String originalPrinter =
+                                                  json['printerName']
+                                                      ?.toString() ??
+                                                  '';
+                                              if (originalPrinter.isNotEmpty) {
+                                                final bool isStillConnected =
+                                                    printerService
+                                                        .isPrinterConnected(
+                                                          originalPrinter,
+                                                        );
+                                                return Text(
+                                                  "Impresora: $originalPrinter ${isStillConnected ? '✅' : '❌'}",
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color:
+                                                        isStillConnected
+                                                            ? Colors.green
+                                                            : Colors.red,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                );
+                                              } else {
+                                                return const Text(
+                                                  "Impresora: No especificada",
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.grey,
+                                                  ),
+                                                );
+                                              }
+                                            } catch (e) {
+                                              return const Text(
+                                                "Impresora: No determinada",
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: Colors.grey,
+                                                ),
+                                              );
+                                            }
+                                          },
+                                        ),
+                                      ],
                                     ),
                                     trailing: IconButton(
                                       icon: const Icon(Icons.print),
                                       color: Colors.blue,
-                                      onPressed:
-                                          printerService.currentPrinter != null
-                                              ? () {
-                                                final printJobService =
-                                                    Provider.of<
-                                                      PrintJobService
-                                                    >(context, listen: false);
-                                                printJobService
-                                                    .processPrintRequest(
-                                                      item.rawJson,
-                                                    );
-                                              }
-                                              : null,
+                                      onPressed: () {
+                                        final printJobService =
+                                            Provider.of<PrintJobService>(
+                                              context,
+                                              listen: false,
+                                            );
+
+                                        // Intentar determinar la impresora original del mensaje
+                                        try {
+                                          final Map<String, dynamic> json =
+                                              jsonDecode(item.rawJson);
+                                          final String originalPrinter =
+                                              json['printerName']?.toString() ??
+                                              '';
+
+                                          if (originalPrinter.isNotEmpty &&
+                                              printerService.isPrinterConnected(
+                                                originalPrinter,
+                                              )) {
+                                            // Imprimir en la impresora original si está conectada
+                                            print(
+                                              '🖨️ Reimprimiendo ${item.tipo} en impresora original: $originalPrinter',
+                                            );
+                                            printJobService.processPrintRequest(
+                                              item.rawJson,
+                                            );
+                                          } else if (printerService
+                                                  .currentPrinter !=
+                                              null) {
+                                            // Si no hay impresora original o no está conectada, usar la actual
+                                            print(
+                                              '🖨️ Imprimiendo ${item.tipo} en impresora actual: ${printerService.currentPrinter?.deviceName}',
+                                            );
+                                            Map<String, dynamic> modifiedJson =
+                                                json;
+                                            modifiedJson['printerName'] =
+                                                printerService
+                                                    .currentPrinter
+                                                    ?.deviceName ??
+                                                '';
+                                            printJobService.processPrintRequest(
+                                              jsonEncode(modifiedJson),
+                                            );
+                                          } else {
+                                            print(
+                                              '❌ No hay impresoras disponibles para reimprimir ${item.tipo}',
+                                            );
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'No hay impresoras conectadas',
+                                                ),
+                                                backgroundColor: Colors.red,
+                                              ),
+                                            );
+                                          }
+                                        } catch (e) {
+                                          // Si hay error parseando, usar la impresora actual
+                                          if (printerService.currentPrinter !=
+                                              null) {
+                                            print(
+                                              '🖨️ Error parseando ${item.tipo}, usando impresora actual: ${printerService.currentPrinter?.deviceName}',
+                                            );
+                                            printJobService.processPrintRequest(
+                                              item.rawJson,
+                                            );
+                                          } else {
+                                            print(
+                                              '❌ No hay impresoras disponibles',
+                                            );
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'No hay impresoras conectadas',
+                                                ),
+                                                backgroundColor: Colors.red,
+                                              ),
+                                            );
+                                          }
+                                        }
+                                      },
                                     ),
                                   ),
                                 );
