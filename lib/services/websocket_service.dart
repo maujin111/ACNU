@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -40,21 +41,68 @@ class WebSocketService extends ChangeNotifier {
   }
   Future<void> _initFromStorage() async {
     try {
-      // Cargar mensajes anteriores
+      // Cargar mensajes anteriores (solo tipos permitidos)
       final savedMessages = await ConfigService.loadMessages();
       if (savedMessages.isNotEmpty) {
-        _messages.addAll(savedMessages);
-
-        // Convertir mensajes a elementos de historial
+        // Filtrar solo mensajes con tipos permitidos
         for (var message in savedMessages) {
           try {
-            // Para mensajes guardados, ponemos la fecha actual como fallback
-            // En una implementación más avanzada, podríamos guardar las fechas reales
-            final historyItem = PrintHistoryItem.fromMessage(
-              message,
-              timestamp: DateTime.now(),
-            );
-            _historyItems.add(historyItem);
+            final Map<String, dynamic> data = json.decode(message);
+            final String? type = data['type']?.toString();
+
+            const List<String> allowedTypes = [
+              'COMANDA',
+              'PREFACTURA',
+              'VENTA',
+              'TEST',
+              'SORTEO',
+            ];
+
+            if (type != null && allowedTypes.contains(type.toUpperCase())) {
+              _messages.add(message);
+            }
+          } catch (e) {
+            print('❌ Error al validar mensaje guardado: $e');
+          }
+        }
+
+        // Convertir mensajes a elementos de historial (solo tipos permitidos)
+        for (var message in savedMessages) {
+          try {
+            // Validar tipo antes de agregar al historial
+            bool shouldAddToHistory = true;
+            try {
+              final Map<String, dynamic> data = json.decode(message);
+              final String? type = data['type']?.toString();
+
+              const List<String> allowedTypes = [
+                'COMANDA',
+                'PREFACTURA',
+                'VENTA',
+                'TEST',
+                'SORTEO',
+              ];
+
+              if (type == null || !allowedTypes.contains(type.toUpperCase())) {
+                print(
+                  '⚠️ Mensaje guardado con tipo "$type" no permitido, omitiendo del historial',
+                );
+                shouldAddToHistory = false;
+              }
+            } catch (e) {
+              print('❌ Error al validar tipo de mensaje guardado: $e');
+              shouldAddToHistory = false;
+            }
+
+            if (shouldAddToHistory) {
+              // Para mensajes guardados, ponemos la fecha actual como fallback
+              // En una implementación más avanzada, podríamos guardar las fechas reales
+              final historyItem = PrintHistoryItem.fromMessage(
+                message,
+                timestamp: DateTime.now(),
+              );
+              _historyItems.add(historyItem);
+            }
           } catch (e) {
             print('Error al procesar mensaje guardado: $e');
           }
@@ -336,22 +384,49 @@ class WebSocketService extends ChangeNotifier {
       print('Mensaje procesado: [$cleanMessage]');
       print('JSON extraído: [$jsonMessage]');
 
-      // Agregar el mensaje a la lista de mensajes crudos
-      _messages.add(cleanMessage);
-
-      // Crear y agregar un elemento de historial estructurado
+      // Validar tipos permitidos antes de agregar al historial
+      bool shouldAddToHistory = true;
       try {
-        final historyItem = PrintHistoryItem.fromMessage(jsonMessage);
-        _historyItems.add(historyItem);
-        print(
-          'Historial añadido: ID=${historyItem.id}, Tipo=${historyItem.tipo}',
-        );
+        final Map<String, dynamic> data = json.decode(jsonMessage);
+        final String? type = data['type']?.toString();
+
+        const List<String> allowedTypes = [
+          'COMANDA',
+          'PREFACTURA',
+          'VENTA',
+          'TEST',
+          'SORTEO',
+        ];
+
+        if (type == null || !allowedTypes.contains(type.toUpperCase())) {
+          print(
+            '⚠️ Tipo de documento "$type" no permitido para historial. Solo se permiten: ${allowedTypes.join(", ")}',
+          );
+          shouldAddToHistory = false;
+        }
       } catch (e) {
-        print('Error al crear elemento de historial: $e');
+        print('❌ Error al validar tipo de mensaje para historial: $e');
+        shouldAddToHistory = false;
       }
 
-      // Guardar mensaje en almacenamiento persistente
-      ConfigService.addMessage(cleanMessage);
+      // Agregar el mensaje a la lista de mensajes crudos solo si es tipo válido
+      if (shouldAddToHistory) {
+        _messages.add(cleanMessage);
+
+        // Crear y agregar un elemento de historial estructurado
+        try {
+          final historyItem = PrintHistoryItem.fromMessage(jsonMessage);
+          _historyItems.add(historyItem);
+          print(
+            'Historial añadido: ID=${historyItem.id}, Tipo=${historyItem.tipo}',
+          );
+        } catch (e) {
+          print('Error al crear elemento de historial: $e');
+        }
+
+        // Guardar mensaje en almacenamiento persistente solo si es tipo válido
+        ConfigService.addMessage(cleanMessage);
+      }
 
       // Notificar a los callbacks registrados
       if (onNewMessage != null) {
