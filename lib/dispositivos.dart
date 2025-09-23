@@ -135,12 +135,8 @@ class _DispositivosState extends State<Dispositivos> {
                                 ? ElevatedButton.icon(
                                   icon: const Icon(Icons.refresh),
                                   label: const Text("Reconectar"),
-                                  onPressed: () {
-                                    if (webSocketService.token != null) {
-                                      webSocketService.connect(
-                                        webSocketService.token!,
-                                      );
-                                    }
+                                  onPressed: () async {
+                                    await webSocketService.forceReconnect();
                                   },
                                 )
                                 : Container(),

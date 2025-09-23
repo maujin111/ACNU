@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:anfibius_uwu/models/print_request.dart';
 import 'package:anfibius_uwu/services/config_service.dart';
@@ -56,26 +55,89 @@ class PrintJobService {
       print(
         '🔍 Cargando tamaño de papel desde configuración para: $printerName',
       );
+
+      // Primero verificar si está en el PrinterService (configuración en memoria)
+      final printerServiceSize = printerService.getPaperSize(printerName);
+      print(
+        '📊 Tamaño en PrinterService para $printerName: ${_getPaperSizeDisplayName(printerServiceSize)}',
+      );
+
+      // Luego verificar configuración guardada
       final savedPaperSize = await ConfigService.loadPrinterPaperSize(
         printerName,
       );
+
       if (savedPaperSize != null) {
         String paperSizeName = _getPaperSizeDisplayName(savedPaperSize);
         print(
-          '✅ Tamaño de papel cargado para $printerName: $paperSizeName (${savedPaperSize.toString()})',
+          '✅ Tamaño de papel cargado desde configuración para $printerName: $paperSizeName (${savedPaperSize.toString()})',
         );
+
+        // Verificar si hay diferencia entre PrinterService y configuración guardada
+        if (printerServiceSize != savedPaperSize) {
+          print(
+            '⚠️ Diferencia detectada: PrinterService=${_getPaperSizeDisplayName(printerServiceSize)} vs Guardado=${_getPaperSizeDisplayName(savedPaperSize)}',
+          );
+          print(
+            '✅ Usando configuración guardada como autoridad: ${_getPaperSizeDisplayName(savedPaperSize)}',
+          );
+        }
+
         return savedPaperSize;
       } else {
         print(
-          '⚠️ No hay tamaño de papel guardado para $printerName, usando 80mm por defecto',
+          '⚠️ No hay tamaño de papel guardado para $printerName, usando configuración del PrinterService: ${_getPaperSizeDisplayName(printerServiceSize)}',
         );
-        return PaperSize.mm80;
+
+        // Si no hay configuración guardada, usar la del PrinterService y guardarla
+        await ConfigService.savePrinterPaperSize(
+          printerName,
+          printerServiceSize,
+        );
+        print(
+          '💾 Guardado tamaño ${_getPaperSizeDisplayName(printerServiceSize)} para $printerName',
+        );
+
+        return printerServiceSize;
       }
     } else {
       print(
         '⚠️ No se especificó impresora, usando tamaño detectado del servicio',
       );
       return printerService.getCurrentPaperSize();
+    }
+  }
+
+  /// Sincronizar configuración de papel entre PrinterService y configuración guardada
+  Future<void> syncPaperSizeConfiguration() async {
+    print('🔄 Sincronizando configuración de tamaños de papel...');
+
+    // Obtener todas las impresoras conectadas
+    final connectedPrinters = printerService.connectedPrinters.keys.toList();
+    if (printerService.selectedPrinter != null) {
+      final selectedName = printerService.selectedPrinter!.deviceName;
+      if (selectedName != null && !connectedPrinters.contains(selectedName)) {
+        connectedPrinters.add(selectedName);
+      }
+    }
+
+    for (String printerName in connectedPrinters) {
+      final serviceSize = printerService.getPaperSize(printerName);
+      final savedSize = await ConfigService.loadPrinterPaperSize(printerName);
+
+      if (savedSize == null) {
+        // No hay configuración guardada, guardar la del servicio
+        await ConfigService.savePrinterPaperSize(printerName, serviceSize);
+        print(
+          '💾 Guardada configuración inicial para $printerName: ${_getPaperSizeDisplayName(serviceSize)}',
+        );
+      } else if (serviceSize != savedSize) {
+        // Hay diferencia, dar prioridad a la configuración guardada y actualizar el servicio
+        printerService.setPaperSizeForPrinter(printerName, savedSize);
+        print(
+          '🔄 Sincronizado $printerName: ${_getPaperSizeDisplayName(savedSize)}',
+        );
+      }
     }
   }
 
@@ -97,6 +159,10 @@ class PrintJobService {
   Future<bool> processPrintRequest(String jsonMessage) async {
     try {
       print(jsonMessage);
+
+      // Sincronizar configuración de papel al inicio
+      await syncPaperSizeConfiguration();
+
       // Verificar si hay un JSON válido
       if (jsonMessage.trim().isEmpty) {
         print('❌ Mensaje recibido vacío o inválido');
@@ -141,8 +207,18 @@ class PrintJobService {
         print('🖨️ Usando impresora principal: $targetPrinterName');
       }
 
+      // Validar que el tipo de solicitud sea permitido
+      final tipoSolicitud = request.tipo.toUpperCase();
+      const tiposPermitidos = ['COMANDA', 'PREFACTURA', 'VENTA', 'TEST', 'SORTEO'];
+      
+      if (!tiposPermitidos.contains(tipoSolicitud)) {
+        print('❌ Tipo de impresión no permitido: $tipoSolicitud');
+        print('✅ Tipos permitidos: ${tiposPermitidos.join(', ')}');
+        return false;
+      }
+
       // Procesar según el tipo de solicitud
-      print('🖨️ Procesando solicitud de tipo: ${request.tipo.toUpperCase()}');
+      print('🖨️ Procesando solicitud de tipo válido: $tipoSolicitud');
 
       // Obtener el tamaño de papel desde la configuración guardada
       final paperSize = await _getPaperSizeForPrinter(targetPrinterName);
@@ -151,7 +227,7 @@ class PrintJobService {
         '📄 Tamaño de papel para $targetPrinterName: ${_getPaperSizeDisplayName(paperSize)}',
       );
 
-      switch (request.tipo.toUpperCase()) {
+      switch (tipoSolicitud) {
         case 'COMANDA':
           print('🍽️ Imprimiendo comanda...');
           return await printComanda(request, targetPrinterName);
@@ -182,7 +258,8 @@ class PrintJobService {
           print('🎲 Imprimiendo sorteo...');
           return await printSorteo(request, targetPrinterName);
         default:
-          print('❓ Tipo de impresión desconocido: ${request.tipo}');
+          // Este caso no debería ocurrir nunca debido a la validación previa
+          print('❌ Error interno: Tipo de impresión no manejado: $tipoSolicitud');
           return false;
       }
     } catch (e, stackTrace) {
@@ -209,6 +286,13 @@ class PrintJobService {
 
       // Obtener el tamaño de papel desde la configuración guardada
       final paperSize = await _getPaperSizeForPrinter(printerName);
+
+      // Debug detallado para resolución del problema
+      print('🔧 === DEBUG DETALLADO COMANDA ===');
+      print('🔧 Impresora objetivo: $printerName');
+      print('🔧 PaperSize resuelto: $paperSize');
+      print('🔧 PaperSize display: ${_getPaperSizeDisplayName(paperSize)}');
+      print('🔧 === FIN DEBUG ===');
 
       final generator = Generator(paperSize, profile);
       print(
@@ -873,6 +957,13 @@ class PrintJobService {
 
       // Obtener el tamaño de papel desde la configuración guardada
       final paperSize = await _getPaperSizeForPrinter(printerName);
+
+      // Debug detallado para resolución del problema
+      print('🔧 === DEBUG DETALLADO VENTA ===');
+      print('🔧 Impresora objetivo: $printerName');
+      print('🔧 PaperSize resuelto: $paperSize');
+      print('🔧 PaperSize display: ${_getPaperSizeDisplayName(paperSize)}');
+      print('🔧 === FIN DEBUG ===');
 
       final generator = Generator(paperSize, profile);
       print(
@@ -1685,7 +1776,7 @@ class PrintJobService {
         break;
       case PaperSize.mm80:
       default:
-        length = 42;
+        length = 48; // Corregido: 80mm debe usar ~48 caracteres
         break;
     }
 

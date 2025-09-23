@@ -171,7 +171,7 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: DropdownButtonFormField<ThemeMode>(
-                    value: themeService.themeMode,
+                    initialValue: themeService.themeMode,
                     decoration: const InputDecoration(
                       labelText: 'Tema',
                       border: OutlineInputBorder(),

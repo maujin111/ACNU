@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:anfibius_uwu/services/config_service.dart';
-import 'package:anfibius_uwu/services/print_job_service.dart';
 import 'package:anfibius_uwu/services/printer_service.dart';
 
 import 'package:flutter/material.dart';
@@ -100,7 +99,7 @@ class _PrinterConfigState extends State<PrinterConfig> {
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: DropdownButtonFormField<PrinterType>(
-                    value: printerService.printerType,
+                    initialValue: printerService.printerType,
                     decoration: const InputDecoration(
                       labelText: 'Tipo de impresora',
                       border: OutlineInputBorder(),
@@ -217,120 +216,6 @@ class _PrinterConfigState extends State<PrinterConfig> {
                       },
                       child: const Text('Conectar Impresora de Red'),
                     ),
-                  ),
-                ),
-
-                // Tamaño de papel manual
-                const SizedBox(height: 10),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: Text(
-                      "Tamaño de papel",
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                  ),
-                ),
-
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      DropdownButtonFormField<String>(
-                        value:
-                            printerService.usingCustomPaperSize
-                                ? 'custom'
-                                : 'auto',
-                        decoration: const InputDecoration(
-                          labelText: 'Modo de configuración',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'auto',
-                            child: Text('Autodetectar (recomendado)'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'custom',
-                            child: Text('Manual'),
-                          ),
-                        ],
-                        onChanged: (String? value) {
-                          if (value == 'auto') {
-                            printerService.useDetectedPaperSize();
-                          } else if (value == 'custom') {
-                            // Activar modo manual con el ancho actual
-                            final int initialWidth;
-                            switch (printerService.detectedPaperSize) {
-                              case PaperSize.mm58:
-                                initialWidth = 58;
-                                break;
-                              case PaperSize.mm72:
-                                initialWidth = 72;
-                                break;
-                              default:
-                                initialWidth = 80;
-                            }
-                            printerService.setCustomPaperWidth(initialWidth);
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 20),
-                      // Campo para el ancho personalizado
-                      Visibility(
-                        visible: printerService.usingCustomPaperSize,
-                        child: Column(
-                          children: [
-                            DropdownButtonFormField<int>(
-                              value:
-                                  printerService.customPaperWidth > 0
-                                      ? printerService.customPaperWidth
-                                      : 80, // Valor por defecto si es 0
-                              decoration: const InputDecoration(
-                                labelText: 'Ancho del papel',
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 8,
-                                ),
-                              ),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 58,
-                                  child: Text('58mm'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 72,
-                                  child: Text('72mm'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 80,
-                                  child: Text('80mm'),
-                                ),
-                              ],
-                              onChanged: (int? value) {
-                                if (value != null) {
-                                  printerService.setCustomPaperWidth(value);
-                                }
-                              },
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Seleccione el ancho de papel adecuado para su impresora',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontStyle: FontStyle.italic,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
                   ),
                 ),
 
@@ -668,86 +553,6 @@ class _PrinterConfigState extends State<PrinterConfig> {
                   );
                 },
                 child: const Text('Actualizar'),
-              ),
-            ],
-          ),
-    );
-  }
-
-  // Mostrar diálogo de selección de tamaño de papel al agregar impresora
-  Future<PaperSize?> _showPaperSizeSelectionDialog(String printerName) async {
-    PaperSize? selectedPaperSize;
-
-    return await showDialog<PaperSize>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text('Seleccionar tamaño de papel\n$printerName'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Selecciona el tamaño de papel para esta impresora:',
-                  style: TextStyle(fontSize: 16),
-                ),
-                const SizedBox(height: 16),
-                StatefulBuilder(
-                  builder:
-                      (context, setDialogState) => Column(
-                        children: [
-                          RadioListTile<PaperSize>(
-                            title: const Text('58mm'),
-                            subtitle: const Text(
-                              'Papel térmico pequeño (ideal para tickets)',
-                            ),
-                            value: PaperSize.mm58,
-                            groupValue: selectedPaperSize,
-                            onChanged: (value) {
-                              setDialogState(() {
-                                selectedPaperSize = value;
-                              });
-                            },
-                          ),
-                          RadioListTile<PaperSize>(
-                            title: const Text('72mm'),
-                            subtitle: const Text('Papel térmico mediano'),
-                            value: PaperSize.mm72,
-                            groupValue: selectedPaperSize,
-                            onChanged: (value) {
-                              setDialogState(() {
-                                selectedPaperSize = value;
-                              });
-                            },
-                          ),
-                          RadioListTile<PaperSize>(
-                            title: const Text('80mm'),
-                            subtitle: const Text(
-                              'Papel térmico estándar (más común)',
-                            ),
-                            value: PaperSize.mm80,
-                            groupValue: selectedPaperSize,
-                            onChanged: (value) {
-                              setDialogState(() {
-                                selectedPaperSize = value;
-                              });
-                            },
-                          ),
-                        ],
-                      ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, null),
-                child: const Text('Cancelar'),
-              ),
-              ElevatedButton(
-                onPressed:
-                    selectedPaperSize != null
-                        ? () => Navigator.pop(context, selectedPaperSize)
-                        : null,
-                child: const Text('Agregar Impresora'),
               ),
             ],
           ),

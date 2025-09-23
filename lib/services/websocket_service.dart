@@ -20,6 +20,20 @@ class WebSocketService extends ChangeNotifier {
   final List<PrintHistoryItem> _historyItems =
       []; // Nueva lista para historial procesado
   StreamSubscription? _subscription;
+
+  // Temporizador para intentar reconexión
+  Timer? _reconnectTimer;
+
+  // Temporizador para heartbeat
+  Timer? _heartbeatTimer;
+
+  // Contador de intentos de reconexión
+  int _reconnectAttempts = 0;
+  static const int _maxReconnectAttempts = 10;
+
+  // Flag para controlar si debe reconectar automáticamente
+  bool _shouldAutoReconnect = true;
+
   WebSocketService() {
     // Comenzar inicialización en la construcción del servicio
     _initFromStorage();
@@ -69,6 +83,12 @@ class WebSocketService extends ChangeNotifier {
   List<String> get messages => List.unmodifiable(_messages);
   List<PrintHistoryItem> get historyItems => List.unmodifiable(_historyItems);
 
+  // Getter para saber si la reconexión automática está habilitada
+  bool get shouldAutoReconnect => _shouldAutoReconnect;
+
+  // Getter para obtener el número de intentos de reconexión
+  int get reconnectAttempts => _reconnectAttempts;
+
   Future<void> connect(String token) async {
     if (_isConnected) {
       disconnect();
@@ -78,8 +98,38 @@ class WebSocketService extends ChangeNotifier {
     _token = token.replaceAll("%0D", "").trim();
     await ConfigService.saveWebSocketToken(_token!);
 
+    // Habilitar reconexión automática al conectar manualmente
+    _shouldAutoReconnect = true;
+    _reconnectAttempts = 0;
+
     print('Conectando al WebSocket con token: $_token');
     return _connect();
+  }
+
+  // Método para forzar reconexión (usado en botón "Reconectar")
+  Future<void> forceReconnect() async {
+    if (_token == null || _token!.isEmpty) {
+      print('❌ No hay token disponible para reconectar');
+      return;
+    }
+
+    print('🔄 Forzando reconexión...');
+
+    // Deshabilitar reconexión automática temporalmente
+    _shouldAutoReconnect = false;
+
+    // Desconectar si está conectado
+    if (_isConnected) {
+      disconnect();
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+
+    // Resetear contador y habilitar reconexión automática
+    _reconnectAttempts = 0;
+    _shouldAutoReconnect = true;
+
+    // Intentar conectar
+    await _connect();
   }
 
   Future<IOWebSocketChannel> connectWebSocketInsecure(String url) async {
@@ -127,10 +177,17 @@ class WebSocketService extends ChangeNotifier {
           (message) {
             print('Mensaje recibido - Raw: $message');
             _addMessage(message.toString());
+
+            // Resetear contador de reconexión en mensajes exitosos
+            if (_reconnectAttempts > 0) {
+              print('✅ Conexión estable, reseteando contador de reconexión');
+              _reconnectAttempts = 0;
+            }
           },
           onDone: () {
-            print('WebSocket desconectado');
+            print('WebSocket desconectado (onDone)');
             _isConnected = false;
+            _heartbeatTimer?.cancel();
             notifyListeners();
             // Intentar reconectar después de un tiempo
             _scheduleReconnect();
@@ -138,6 +195,7 @@ class WebSocketService extends ChangeNotifier {
           onError: (error) {
             print('Error de WebSocket: $error');
             _isConnected = false;
+            _heartbeatTimer?.cancel();
             notifyListeners();
             // Intentar reconectar después de un tiempo
             _scheduleReconnect();
@@ -145,6 +203,8 @@ class WebSocketService extends ChangeNotifier {
         );
 
         _isConnected = true;
+        _reconnectAttempts = 0; // Resetear intentos en conexión exitosa
+        _startHeartbeat(); // Iniciar heartbeat para detectar conexiones muertas
         notifyListeners();
         print('✅ Conectado exitosamente a: $urlString');
         return; // Salir del bucle si la conexión fue exitosa
@@ -163,27 +223,92 @@ class WebSocketService extends ChangeNotifier {
     _scheduleReconnect();
   }
 
-  // Temporizador para intentar reconexión
-  Timer? _reconnectTimer;
-
   void _scheduleReconnect() {
+    // No intentar reconectar si se desconectó manualmente
+    if (!_shouldAutoReconnect) {
+      print('Reconexión automática deshabilitada');
+      return;
+    }
+
     // Cancelar cualquier temporizador anterior
     _reconnectTimer?.cancel();
+    _heartbeatTimer?.cancel();
 
-    // Programar un intento de reconexión después de 5 segundos
-    _reconnectTimer = Timer(const Duration(seconds: 5), () {
-      if (!_isConnected && _token != null && _token!.isNotEmpty) {
-        print('Intentando reconectar al WebSocket...');
+    // Verificar si se alcanzó el máximo de intentos
+    if (_reconnectAttempts >= _maxReconnectAttempts) {
+      print(
+        '❌ Máximo de intentos de reconexión alcanzado ($_maxReconnectAttempts)',
+      );
+      _shouldAutoReconnect = false;
+      return;
+    }
+
+    _reconnectAttempts++;
+
+    // Usar backoff exponencial: 5s, 10s, 20s, 40s, hasta max 60s
+    int delaySeconds = (5 * (1 << (_reconnectAttempts - 1))).clamp(5, 60);
+
+    print('Programando reconexión #$_reconnectAttempts en ${delaySeconds}s...');
+
+    // Programar un intento de reconexión
+    _reconnectTimer = Timer(Duration(seconds: delaySeconds), () {
+      if (!_isConnected &&
+          _token != null &&
+          _token!.isNotEmpty &&
+          _shouldAutoReconnect) {
+        print(
+          'Intentando reconectar al WebSocket (intento #$_reconnectAttempts)...',
+        );
         _connect();
       }
     });
   }
 
   void disconnect() {
+    print('Desconectando WebSocket manualmente...');
+
+    // Deshabilitar reconexión automática cuando se desconecta manualmente
+    _shouldAutoReconnect = false;
+
+    // Cancelar temporizadores
+    _reconnectTimer?.cancel();
+    _heartbeatTimer?.cancel();
+
+    // Cerrar conexión
     _subscription?.cancel();
     _channel?.sink.close();
     _isConnected = false;
+
+    // Resetear contador de intentos
+    _reconnectAttempts = 0;
+
     notifyListeners();
+  }
+
+  // Iniciar heartbeat para detectar conexiones muertas
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+
+    // Enviar ping cada 15 segundos para mantener la conexión viva
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+      if (_isConnected && _channel != null) {
+        try {
+          // Enviar un ping simple
+          _channel!.sink.add('ping');
+          print('📡 Heartbeat enviado');
+        } catch (e) {
+          print('❌ Error al enviar heartbeat: $e');
+          // Si falla el heartbeat, considerar la conexión como muerta
+          _isConnected = false;
+          _heartbeatTimer?.cancel();
+          notifyListeners();
+          _scheduleReconnect();
+        }
+      } else {
+        // Detener heartbeat si no hay conexión
+        timer.cancel();
+      }
+    });
   }
 
   // Callback para imprimir mensaje automáticamente
@@ -240,7 +365,10 @@ class WebSocketService extends ChangeNotifier {
 
   @override
   void dispose() {
+    print('Limpiando WebSocketService...');
+    _shouldAutoReconnect = false; // Deshabilitar reconexión al hacer dispose
     _reconnectTimer?.cancel();
+    _heartbeatTimer?.cancel();
     disconnect();
     super.dispose();
   }

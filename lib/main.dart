@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:anfibius_uwu/configuraciones.dart';
 import 'package:anfibius_uwu/dispositivos.dart';
@@ -238,8 +239,34 @@ class _MyHomePageState extends State<MyHomePage>
     webSocketService.onNewMessage = (String jsonMessage) async {
       try {
         print(
-          '🖨️ Procesando impresión automática para mensaje: ${jsonMessage.length > 100 ? jsonMessage.substring(0, 100) + "..." : jsonMessage}',
+          '🖨️ Procesando impresión automática para mensaje: ${jsonMessage.length > 100 ? "${jsonMessage.substring(0, 100)}..." : jsonMessage}',
         );
+
+        // Validar tipos permitidos antes de procesar
+        try {
+          final Map<String, dynamic> data = json.decode(jsonMessage);
+          final String? type = data['type']?.toString();
+
+          const List<String> allowedTypes = [
+            'COMANDA',
+            'PREFACTURA',
+            'VENTA',
+            'TEST',
+            'SORTEO',
+          ];
+
+          if (type == null || !allowedTypes.contains(type)) {
+            print(
+              '⚠️ Tipo de documento "$type" no permitido. Solo se permiten: ${allowedTypes.join(", ")}',
+            );
+            return; // Salir silenciosamente sin mostrar notificación de error
+          }
+
+          print('✅ Tipo de documento válido: $type');
+        } catch (e) {
+          print('❌ Error al parsear mensaje JSON: $e');
+          return; // Salir silenciosamente si no se puede parsear el JSON
+        }
 
         // Verificar si hay impresoras disponibles - mejorar la validación
         bool hasAvailablePrinters = false;
