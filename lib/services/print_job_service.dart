@@ -866,6 +866,22 @@ class PrintJobService {
         ),
       ]);
 
+      // Agregar servicio 10% si es mayor que 0
+      if (esValorMayorQueCero(prefacturaData.servicio)) {
+        bytes += generator.row([
+          PosColumn(
+            text: 'SERVICIO 10%:',
+            width: 9,
+            styles: baseStyle.copyWith(align: PosAlign.left),
+          ),
+          PosColumn(
+            text: formatearValorNumerico(prefacturaData.servicio),
+            width: 3,
+            styles: baseStyle.copyWith(align: PosAlign.left),
+          ),
+        ]);
+      }
+
       bytes += generator.row([
         PosColumn(
           text: 'IVA 15:',
@@ -1191,6 +1207,22 @@ class PrintJobService {
           ),
           PosColumn(
             text: ventaData.subtotal15.toStringAsFixed(4),
+            width: 3,
+            styles: baseStyle.copyWith(align: PosAlign.left),
+          ),
+        ]);
+      }
+
+      // Agregar servicio 10% si es mayor que 0
+      if (esValorMayorQueCero(ventaData.recargo)) {
+        bytes += generator.row([
+          PosColumn(
+            text: 'SERVICIO 10%:',
+            width: 9,
+            styles: baseStyle.copyWith(align: PosAlign.left),
+          ),
+          PosColumn(
+            text: formatearValorNumerico(ventaData.recargo),
             width: 3,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
@@ -1657,6 +1689,24 @@ class PrintJobService {
           ),
           PosColumn(
             text: formatearValorNumerico(dataMap['iva12']),
+            width: 3,
+            styles: baseStyle.copyWith(align: PosAlign.left),
+          ),
+        ]);
+      }
+
+      // SERVICIO 10% (antes del IVA 15%)
+      if (esValorMayorQueCero(dataMap['vent_recargo'] ?? dataMap['recargo'])) {
+        bytes += generator.row([
+          PosColumn(
+            text: 'SERVICIO 10%:',
+            width: 9,
+            styles: baseStyle.copyWith(align: PosAlign.left),
+          ),
+          PosColumn(
+            text: formatearValorNumerico(
+              dataMap['vent_recargo'] ?? dataMap['recargo'],
+            ),
             width: 3,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),

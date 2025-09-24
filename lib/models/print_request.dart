@@ -378,6 +378,7 @@ class PrefacturaData {
   final double sinIva;
   final double conIva;
   final double iva;
+  final double servicio;
   final double total;
   final List<DetallePrefactura> detalles;
   final String? empleado;
@@ -389,6 +390,7 @@ class PrefacturaData {
     required this.sinIva,
     required this.conIva,
     required this.iva,
+    required this.servicio,
     required this.total,
     required this.detalles,
     this.empleado,
@@ -425,6 +427,10 @@ class PrefacturaData {
       final sinIva = _parseDoubleFromJson(json, ['subTotal0', 'doin_siniva']);
       final conIva = _parseDoubleFromJson(json, ['subtotal15', 'doin_coniva']);
       final iva = _parseDoubleFromJson(json, ['iva15', 'doin_iva']);
+      final servicio = _parseDoubleFromJson(json, [
+        'servicio',
+        'doin_servicio',
+      ]);
       final total = _parseDoubleFromJson(json, ['total', 'doin_total']);
       final empleado = json['empleado'] ?? json['empl_nombre'];
 
@@ -439,6 +445,7 @@ class PrefacturaData {
         sinIva: sinIva,
         conIva: conIva,
         iva: iva,
+        servicio: servicio,
         total: total,
         detalles:
             detallesList
@@ -454,6 +461,7 @@ class PrefacturaData {
         sinIva: 0.0,
         conIva: 0.0,
         iva: 0.0,
+        servicio: 0.0,
         total: 0.0,
         detalles: [],
         empleado: '',
@@ -599,6 +607,7 @@ class VentaData {
   final double subtotal5;
   final double subtotal8;
   final double totalDescuento;
+  final double recargo;
   final double iva15;
   final double iva12;
   final double iva5;
@@ -631,6 +640,7 @@ class VentaData {
     required this.subtotal5,
     required this.subtotal8,
     required this.totalDescuento,
+    required this.recargo,
     required this.iva15,
     required this.iva12,
     required this.iva5,
@@ -705,6 +715,10 @@ class VentaData {
       totalDescuento:
           json['vent_descuento'] != null
               ? double.tryParse(json['vent_descuento'].toString()) ?? 0.0
+              : 0.0,
+      recargo:
+          json['vent_recargo'] != null
+              ? double.tryParse(json['vent_recargo'].toString()) ?? 0.0
               : 0.0,
       iva15:
           json['sum_iva_15'] != null
