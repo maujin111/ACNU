@@ -61,6 +61,9 @@ class ConfigService {
   static const String _usingCustomPaperSizeKey = 'using_custom_paper_size';
   static const String _connectedPrintersKey = 'connected_printers';
 
+  // Claves para lector de huellas
+  static const String _fingerprintDeviceKey = 'fingerprint_device';
+
   // Guardar la impresora seleccionada
   static Future<void> saveSelectedPrinter(BluetoothPrinter? printer) async {
     final prefs = await SharedPreferences.getInstance();
@@ -316,5 +319,44 @@ class ConfigService {
     final prefs = await SharedPreferences.getInstance();
     final key = '${_printerPaperSizeKey}_$printerName';
     await prefs.remove(key);
+  }
+
+  // --- MÉTODOS PARA LECTOR DE HUELLAS ---
+
+  // Guardar dispositivo de lector de huellas
+  static Future<void> saveFingerprintDevice(
+    String type,
+    String vendorId,
+    String productId,
+    String? name,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final deviceData = {
+      'type': type,
+      'vendorId': vendorId,
+      'productId': productId,
+      'name': name,
+    };
+    await prefs.setString(_fingerprintDeviceKey, jsonEncode(deviceData));
+  }
+
+  // Cargar dispositivo de lector de huellas
+  static Future<Map<String, dynamic>?> loadFingerprintDevice() async {
+    final prefs = await SharedPreferences.getInstance();
+    final deviceData = prefs.getString(_fingerprintDeviceKey);
+    if (deviceData == null) return null;
+
+    try {
+      return jsonDecode(deviceData);
+    } catch (e) {
+      print('Error al cargar dispositivo de huella: $e');
+      return null;
+    }
+  }
+
+  // Remover dispositivo de lector de huellas
+  static Future<void> removeFingerprintDevice() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_fingerprintDeviceKey);
   }
 }

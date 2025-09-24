@@ -43,6 +43,10 @@ dependencies:
   timezone: ^0.10.1
   package_info_plus: ^8.3.0
   carousel_slider: ^5.0.0
+  path_provider: ^2.1.5
+  
+  # Dependencias para lector de huellas USB (solo en Windows)
+  device_manager: ^0.0.7
   
   # Dependencias específicas de escritorio (condicionales)
   

@@ -6,6 +6,8 @@ import 'package:anfibius_uwu/services/print_job_service.dart';
 import 'package:anfibius_uwu/services/printer_service.dart';
 import 'package:anfibius_uwu/services/startup_service.dart';
 import 'package:anfibius_uwu/services/websocket_service.dart';
+import 'package:anfibius_uwu/services/fingerprint_reader_service.dart';
+import 'package:anfibius_uwu/services/objetivos_service.dart';
 import 'package:anfibius_uwu/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -131,6 +133,8 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => WebSocketService()),
         ChangeNotifierProvider(create: (_) => PrinterService()),
+        ChangeNotifierProvider(create: (_) => FingerprintReaderService()),
+        ChangeNotifierProvider(create: (_) => ObjetivosService()),
         ProxyProvider<PrinterService, PrintJobService>(
           update: (_, printerService, __) => PrintJobService(printerService),
         ),
@@ -221,6 +225,7 @@ class _MyHomePageState extends State<MyHomePage>
     // Configurar la impresión automática cuando llegan mensajes por WebSocket
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _setupAutoPrint();
+      _setupFingerprintIntegration();
     });
   }
 
@@ -346,6 +351,89 @@ class _MyHomePageState extends State<MyHomePage>
     print('✅ Impresión automática configurada correctamente');
     print(
       '🔗 Callback del WebSocket asignado: ${webSocketService.onNewMessage != null}',
+    );
+  }
+
+  void _setupFingerprintIntegration() {
+    final webSocketService = Provider.of<WebSocketService>(
+      context,
+      listen: false,
+    );
+    final fingerprintService = Provider.of<FingerprintReaderService>(
+      context,
+      listen: false,
+    );
+    final objetivosService = Provider.of<ObjetivosService>(
+      context,
+      listen: false,
+    );
+
+    // Configurar el callback para enviar huellas por WebSocket cuando se detecten
+    fingerprintService.onFingerprintRead = (String fingerprintData) async {
+      try {
+        print('👆 Enviando huella dactilar por WebSocket...');
+        print(
+          '📄 Datos de huella: ${fingerprintData.length > 100 ? "${fingerprintData.substring(0, 100)}..." : fingerprintData}',
+        );
+
+        // OBJETIVO 1: Detectar huella automáticamente ✅
+        await objetivosService.completarObjetivo('detectar_huella');
+
+        // Enviar los datos de la huella directamente por WebSocket
+        await webSocketService.sendMessage(fingerprintData);
+
+        // OBJETIVO 2: Enviar por WebSocket ✅
+        await objetivosService.completarObjetivo('enviar_websocket');
+
+        // OBJETIVO 3: Registrar estado ✅
+        await objetivosService.completarObjetivo('registrar_estado');
+
+        print('✅ Huella dactilar enviada por WebSocket exitosamente');
+        print(
+          '🎯 Objetivos actualizados: ${objetivosService.getResumenProgreso()}',
+        );
+
+        // Mostrar notificación de éxito
+        NotificationsService().showNotification(
+          id: DateTime.now().millisecondsSinceEpoch,
+          title: 'Huella detectada',
+          body:
+              'Huella dactilar enviada correctamente por WebSocket (${objetivosService.getResumenProgreso()})',
+        );
+      } catch (e, stackTrace) {
+        print('❌ Error al enviar huella por WebSocket: $e');
+        print('📋 Stack trace: $stackTrace');
+
+        NotificationsService().showNotification(
+          id: DateTime.now().millisecondsSinceEpoch,
+          title: 'Error de huella',
+          body: 'No se pudo enviar la huella por WebSocket: $e',
+        );
+      }
+    };
+
+    // Configurar el callback de cambio de conexión
+    fingerprintService.onConnectionChanged = (bool isConnected) {
+      print(
+        isConnected
+            ? '✅ Lector de huellas conectado exitosamente'
+            : '❌ Lector de huellas desconectado',
+      );
+
+      NotificationsService().showNotification(
+        id: DateTime.now().millisecondsSinceEpoch + 1,
+        title: isConnected ? 'Lector conectado' : 'Lector desconectado',
+        body:
+            isConnected
+                ? 'El lector de huellas está listo para usar'
+                : 'Se perdió la conexión con el lector de huellas',
+      );
+    };
+
+    print('✅ Integración de lector de huellas configurada correctamente');
+    print('🔗 Callbacks del servicio de huellas asignados');
+    print(
+      '🎯 Estado inicial de objetivos: ${objetivosService.getResumenProgreso()}',
     );
   }
 

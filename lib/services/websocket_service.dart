@@ -547,6 +547,27 @@ class WebSocketService extends ChangeNotifier {
     }
   }
 
+  /// Envía un mensaje a través del WebSocket
+  Future<void> sendMessage(String message) async {
+    if (!_isConnected || _channel == null) {
+      throw Exception('WebSocket no está conectado');
+    }
+
+    try {
+      print(
+        '📤 Enviando mensaje por WebSocket: ${message.length > 100 ? "${message.substring(0, 100)}..." : message}',
+      );
+
+      // Enviar el mensaje a través del canal WebSocket
+      _channel!.sink.add(message);
+
+      print('✅ Mensaje enviado exitosamente por WebSocket');
+    } catch (e) {
+      print('❌ Error al enviar mensaje por WebSocket: $e');
+      throw Exception('Error al enviar mensaje: $e');
+    }
+  }
+
   @override
   void dispose() {
     print('Limpiando WebSocketService...');

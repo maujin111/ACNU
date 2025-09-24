@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   desktop_multi_window
+  device_manager
   flutter_pos_printer_platform_image_3
   screen_retriever_windows
   system_tray
