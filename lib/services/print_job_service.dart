@@ -209,8 +209,14 @@ class PrintJobService {
 
       // Validar que el tipo de solicitud sea permitido
       final tipoSolicitud = request.tipo.toUpperCase();
-      const tiposPermitidos = ['COMANDA', 'PREFACTURA', 'VENTA', 'TEST', 'SORTEO'];
-      
+      const tiposPermitidos = [
+        'COMANDA',
+        'PREFACTURA',
+        'VENTA',
+        'TEST',
+        'SORTEO',
+      ];
+
       if (!tiposPermitidos.contains(tipoSolicitud)) {
         print('❌ Tipo de impresión no permitido: $tipoSolicitud');
         print('✅ Tipos permitidos: ${tiposPermitidos.join(', ')}');
@@ -259,7 +265,9 @@ class PrintJobService {
           return await printSorteo(request, targetPrinterName);
         default:
           // Este caso no debería ocurrir nunca debido a la validación previa
-          print('❌ Error interno: Tipo de impresión no manejado: $tipoSolicitud');
+          print(
+            '❌ Error interno: Tipo de impresión no manejado: $tipoSolicitud',
+          );
           return false;
       }
     } catch (e, stackTrace) {
@@ -355,7 +363,11 @@ class PrintJobService {
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
           PosColumn(
-            text: formatearTexto(detalle.descripcion ?? "", 25),
+            text: formatearTexto(
+              detalle.descripcion ?? "",
+              _getDescriptionWidth(paperSize),
+              paperSize: paperSize,
+            ),
             width: 7,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
@@ -364,7 +376,7 @@ class PrintJobService {
         if (detalle.observacion != null && detalle.observacion!.isNotEmpty) {
           bytes += generator.emptyLines(1);
           bytes += generator.text(
-            '         ${detalle.observacion}                   ',
+            '${_getObservationPadding(paperSize)}${detalle.observacion}',
             styles: baseStyle,
           );
           bytes += generator.emptyLines(1);
@@ -779,7 +791,11 @@ class PrintJobService {
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
           PosColumn(
-            text: '${detalle.descripcion}',
+            text: formatearTexto(
+              detalle.descripcion,
+              _getDescriptionWidth(paperSize),
+              paperSize: paperSize,
+            ),
             width: 5,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
@@ -798,7 +814,7 @@ class PrintJobService {
         if (detalle.observacion != null && detalle.observacion!.isNotEmpty) {
           bytes += generator.emptyLines(1);
           bytes += generator.text(
-            '         ${detalle.observacion}                   ',
+            '${_getObservationPadding(paperSize)}${detalle.observacion}',
             styles: baseStyle,
           );
           bytes += generator.emptyLines(1);
@@ -1072,7 +1088,11 @@ class PrintJobService {
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
           PosColumn(
-            text: '${detalle.descripcion}',
+            text: formatearTexto(
+              detalle.descripcion,
+              _getDescriptionWidth(paperSize),
+              paperSize: paperSize,
+            ),
             width: 5,
             styles: baseStyle.copyWith(align: PosAlign.left),
           ),
@@ -1412,7 +1432,11 @@ class PrintJobService {
       if (dataMap['detalles'] != null && dataMap['detalles'] is List) {
         for (var detalleMap in dataMap['detalles']) {
           final descripcion = detalleMap['descripcion'] ?? '';
-          final String descripcionFormateada = formatearTexto(descripcion, 25);
+          final String descripcionFormateada = formatearTexto(
+            descripcion,
+            _getDescriptionWidth(paperSize),
+            paperSize: paperSize,
+          );
 
           // Obtener los valores numéricos como strings y formatearlos correctamente
           double cant = 0.0;
@@ -1787,8 +1811,40 @@ class PrintJobService {
 
   /// Imprime una solicitud en formato directo
 
+  /// Calcula el padding correcto para observaciones según el tamaño del papel
+  String _getObservationPadding(PaperSize paperSize) {
+    // El padding debe ser proporcional al ancho del papel
+    switch (paperSize) {
+      case PaperSize.mm58:
+        return '     '; // 5 espacios para 58mm (32 chars)
+      case PaperSize.mm72:
+        return '       '; // 7 espacios para 72mm (42 chars)
+      case PaperSize.mm80:
+      default:
+        return '         '; // 9 espacios para 80mm (48 chars)
+    }
+  }
+
+  /// Calcula el ancho máximo para descripción según el tamaño del papel
+  int _getDescriptionWidth(PaperSize paperSize) {
+    switch (paperSize) {
+      case PaperSize.mm58:
+        return 20; // Menor ancho para 58mm
+      case PaperSize.mm72:
+        return 28; // Ancho medio para 72mm
+      case PaperSize.mm80:
+      default:
+        return 35; // Ancho mayor para 80mm
+    }
+  }
+
   // Método para formatear texto largo, respetando saltos de línea y ajustando al ancho
-  String formatearTexto(String? texto, int anchoMax) {
+  String formatearTexto(
+    String? texto,
+    int anchoMax, {
+    PaperSize? paperSize,
+    String? customPadding,
+  }) {
     if (texto == null || texto.isEmpty) return '';
 
     // Eliminar caracteres que puedan causar problemas en la impresión
@@ -1800,9 +1856,15 @@ class PrintJobService {
       List<String> lineas = textoLimpio.split('\n');
       StringBuffer resultado = StringBuffer();
 
+      // Usar padding dinámico o personalizado
+      String padding =
+          customPadding ?? _getObservationPadding(paperSize ?? PaperSize.mm58);
+
       for (int i = 0; i < lineas.length; i++) {
         if (i > 0) {
-          resultado.write('\n         '); // Indentación para líneas adicionales
+          resultado.write(
+            '\n$padding',
+          ); // Indentación dinámica para líneas adicionales
         }
         // Limpiar la línea y asegurar que no exceda el ancho máximo
         String lineaLimpia = lineas[i].trim();

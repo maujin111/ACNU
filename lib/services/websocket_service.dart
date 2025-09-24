@@ -47,8 +47,22 @@ class WebSocketService extends ChangeNotifier {
         // Filtrar solo mensajes con tipos permitidos
         for (var message in savedMessages) {
           try {
-            final Map<String, dynamic> data = json.decode(message);
-            final String? type = data['type']?.toString();
+            // Intentar parsear el JSON, manejando posibles arrays
+            dynamic parsedData = json.decode(message);
+
+            // Si viene como array, tomar el primer elemento
+            Map<String, dynamic> data;
+            if (parsedData is List && parsedData.isNotEmpty) {
+              data = parsedData[0];
+            } else if (parsedData is Map<String, dynamic>) {
+              data = parsedData;
+            } else {
+              continue; // Saltar mensajes con formato no válido
+            }
+
+            // Buscar el tipo en ambos campos posibles: 'type' y 'tipo'
+            final String? type =
+                data['type']?.toString() ?? data['tipo']?.toString();
 
             const List<String> allowedTypes = [
               'COMANDA',
@@ -72,8 +86,22 @@ class WebSocketService extends ChangeNotifier {
             // Validar tipo antes de agregar al historial
             bool shouldAddToHistory = true;
             try {
-              final Map<String, dynamic> data = json.decode(message);
-              final String? type = data['type']?.toString();
+              // Intentar parsear el JSON, manejando posibles arrays
+              dynamic parsedData = json.decode(message);
+
+              // Si viene como array, tomar el primer elemento
+              Map<String, dynamic> data;
+              if (parsedData is List && parsedData.isNotEmpty) {
+                data = parsedData[0];
+              } else if (parsedData is Map<String, dynamic>) {
+                data = parsedData;
+              } else {
+                throw FormatException('Formato de mensaje no válido');
+              }
+
+              // Buscar el tipo en ambos campos posibles: 'type' y 'tipo'
+              final String? type =
+                  data['type']?.toString() ?? data['tipo']?.toString();
 
               const List<String> allowedTypes = [
                 'COMANDA',
@@ -212,13 +240,35 @@ class WebSocketService extends ChangeNotifier {
 
         print('Intentando conectar a: $urlString');
 
+        // Configurar timeout para la conexión
+        final connectionTimeout = Duration(seconds: 10);
+
         if (urlString.startsWith('wss://')) {
           // Para conexiones seguras, usar el método que ignora certificados
-          _channel = await connectWebSocketInsecure(urlString);
+          _channel = await connectWebSocketInsecure(urlString).timeout(
+            connectionTimeout,
+            onTimeout: () {
+              throw TimeoutException(
+                'Timeout al conectar con $urlString',
+                connectionTimeout,
+              );
+            },
+          );
         } else {
           // Para conexiones no seguras, usar conexión directa
           final url = Uri.parse(urlString);
           _channel = WebSocketChannel.connect(url);
+
+          // Esperar un mensaje de confirmación para verificar la conexión
+          await _channel!.ready.timeout(
+            connectionTimeout,
+            onTimeout: () {
+              throw TimeoutException(
+                'Timeout esperando confirmación de $urlString',
+                connectionTimeout,
+              );
+            },
+          );
         }
 
         _subscription = _channel!.stream.listen(
@@ -242,11 +292,7 @@ class WebSocketService extends ChangeNotifier {
           },
           onError: (error) {
             print('Error de WebSocket: $error');
-            _isConnected = false;
-            _heartbeatTimer?.cancel();
-            notifyListeners();
-            // Intentar reconectar después de un tiempo
-            _scheduleReconnect();
+            _handleWebSocketError(error, urlString);
           },
         );
 
@@ -257,7 +303,8 @@ class WebSocketService extends ChangeNotifier {
         print('✅ Conectado exitosamente a: $urlString');
         return; // Salir del bucle si la conexión fue exitosa
       } catch (e) {
-        print('❌ Error al conectar con $urlString: $e');
+        String errorMessage = _getDetailedErrorMessage(e, urlString);
+        print('❌ $errorMessage');
         // Continuar con la siguiente URL
         continue;
       }
@@ -372,6 +419,13 @@ class WebSocketService extends ChangeNotifier {
               .replaceAll("%0D", "")
               .trim();
 
+      // Ignorar mensajes de ping/pong del heartbeat
+      if (cleanMessage.toLowerCase() == 'ping' ||
+          cleanMessage.toLowerCase() == 'pong') {
+        print('📡 Mensaje de heartbeat recibido: $cleanMessage');
+        return; // Salir temprano, no procesar como mensaje de impresión
+      }
+
       // Extraer el JSON si el mensaje tiene el formato "Broadcast [estacion_X/Y]: {...json...}"
       String jsonMessage = cleanMessage;
       final broadcastRegex = RegExp(r'Broadcast \[.*?\]:\s*(\{.*\})');
@@ -387,8 +441,22 @@ class WebSocketService extends ChangeNotifier {
       // Validar tipos permitidos antes de agregar al historial
       bool shouldAddToHistory = true;
       try {
-        final Map<String, dynamic> data = json.decode(jsonMessage);
-        final String? type = data['type']?.toString();
+        // Intentar parsear el JSON, manejando posibles arrays
+        dynamic parsedData = json.decode(jsonMessage);
+
+        // Si viene como array, tomar el primer elemento
+        Map<String, dynamic> data;
+        if (parsedData is List && parsedData.isNotEmpty) {
+          data = parsedData[0];
+        } else if (parsedData is Map<String, dynamic>) {
+          data = parsedData;
+        } else {
+          throw FormatException('Formato de mensaje no válido');
+        }
+
+        // Buscar el tipo en ambos campos posibles: 'type' y 'tipo'
+        final String? type =
+            data['type']?.toString() ?? data['tipo']?.toString();
 
         const List<String> allowedTypes = [
           'COMANDA',
@@ -403,6 +471,8 @@ class WebSocketService extends ChangeNotifier {
             '⚠️ Tipo de documento "$type" no permitido para historial. Solo se permiten: ${allowedTypes.join(", ")}',
           );
           shouldAddToHistory = false;
+        } else {
+          print('✅ Tipo de documento válido para historial: $type');
         }
       } catch (e) {
         print('❌ Error al validar tipo de mensaje para historial: $e');
@@ -435,6 +505,45 @@ class WebSocketService extends ChangeNotifier {
       }
 
       notifyListeners();
+    }
+  }
+
+  /// Maneja errores específicos del WebSocket con información detallada
+  void _handleWebSocketError(dynamic error, String urlString) {
+    String errorMessage = _getDetailedErrorMessage(error, urlString);
+    print('🔥 Error de WebSocket: $errorMessage');
+
+    _isConnected = false;
+    _heartbeatTimer?.cancel();
+    notifyListeners();
+
+    // Intentar reconectar después de un tiempo
+    _scheduleReconnect();
+  }
+
+  /// Obtiene un mensaje de error detallado basado en el tipo de excepción
+  String _getDetailedErrorMessage(dynamic error, String urlString) {
+    if (error.toString().contains('socket_patch.dart')) {
+      // Error relacionado con sockets de red
+      if (error.toString().contains('lookup')) {
+        return 'Error de resolución DNS al conectar con $urlString - Verifique la conexión a internet';
+      } else if (error.toString().contains('staggeredLookup')) {
+        return 'Error de conectividad de red con $urlString - El servidor puede no estar disponible';
+      } else {
+        return 'Error de socket de red con $urlString - Problema de conectividad de red';
+      }
+    } else if (error is TimeoutException) {
+      return 'Timeout al conectar con $urlString después de ${error.duration?.inSeconds ?? 10} segundos';
+    } else if (error.toString().contains('Connection refused')) {
+      return 'Conexión rechazada por el servidor $urlString - El servidor puede estar apagado';
+    } else if (error.toString().contains(
+      'No address associated with hostname',
+    )) {
+      return 'No se pudo resolver la dirección $urlString - Verifique el nombre del servidor';
+    } else if (error.toString().contains('Network is unreachable')) {
+      return 'Red no accesible para $urlString - Verifique la conexión a internet';
+    } else {
+      return 'Error al conectar con $urlString: ${error.toString()}';
     }
   }
 

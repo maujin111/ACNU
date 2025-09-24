@@ -848,24 +848,7 @@ class _DispositivosState extends State<Dispositivos> {
         print('🔍 Debug - Valor extraído: "$value"');
         return _formatPaperSizeName(value);
       } else if (paperSizeStr.contains("Instance of 'PaperSize'")) {
-        // Usar una estrategia alternativa
-        // Intenta acceder al índice del enum o algún otro identificador disponible
-        int? index;
-        try {
-          index = paperSize.index; // Cambiar de .value a .index para enums
-          print('🔍 Debug - Índice del enum: $index');
-        } catch (e) {
-          print('🔍 Debug - No se pudo obtener índice: $e');
-          // Intentar con .value como fallback
-          try {
-            index = paperSize.value;
-            print('🔍 Debug - Valor del enum: $index');
-          } catch (e2) {
-            print('🔍 Debug - Tampoco se pudo obtener valor: $e2');
-          }
-        }
-
-        // Como último recurso, intentar comparar directamente con los valores conocidos
+        // Comparar directamente con los valores conocidos del enum
         if (paperSize == PaperSize.mm58) {
           return '58mm (Ticket)';
         } else if (paperSize == PaperSize.mm80) {
@@ -874,10 +857,8 @@ class _DispositivosState extends State<Dispositivos> {
           return '72mm';
         }
 
-        // Si no podemos determinarlo de ninguna manera
-        print(
-          '⚠️ No se pudo determinar el tamaño de papel, usando valor por defecto',
-        );
+        // Si no coincide con ninguno de los valores conocidos
+        print('⚠️ Valor de PaperSize no reconocido, usando valor por defecto');
         return 'Tamaño no determinado';
       }
 

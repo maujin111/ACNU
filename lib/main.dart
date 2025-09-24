@@ -244,8 +244,23 @@ class _MyHomePageState extends State<MyHomePage>
 
         // Validar tipos permitidos antes de procesar
         try {
-          final Map<String, dynamic> data = json.decode(jsonMessage);
-          final String? type = data['type']?.toString();
+          // Intentar parsear el JSON, manejando posibles arrays
+          dynamic parsedData = json.decode(jsonMessage);
+
+          // Si viene como array, tomar el primer elemento
+          Map<String, dynamic> data;
+          if (parsedData is List && parsedData.isNotEmpty) {
+            data = parsedData[0];
+          } else if (parsedData is Map<String, dynamic>) {
+            data = parsedData;
+          } else {
+            print('❌ Formato de mensaje no válido');
+            return;
+          }
+
+          // Buscar el tipo en ambos campos posibles: 'type' y 'tipo'
+          final String? type =
+              data['type']?.toString() ?? data['tipo']?.toString();
 
           const List<String> allowedTypes = [
             'COMANDA',
@@ -255,7 +270,7 @@ class _MyHomePageState extends State<MyHomePage>
             'SORTEO',
           ];
 
-          if (type == null || !allowedTypes.contains(type)) {
+          if (type == null || !allowedTypes.contains(type.toUpperCase())) {
             print(
               '⚠️ Tipo de documento "$type" no permitido. Solo se permiten: ${allowedTypes.join(", ")}',
             );
