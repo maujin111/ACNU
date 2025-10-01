@@ -44,6 +44,7 @@ dependencies:
   package_info_plus: ^8.3.0
   carousel_slider: ^5.0.0
   path_provider: ^2.1.5
+  ffi: ^2.1.0
   
   # Dependencias para lector de huellas USB (solo en Windows)
   device_manager: ^0.0.7

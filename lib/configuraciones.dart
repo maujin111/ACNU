@@ -1,3 +1,4 @@
+import 'lector_huella.dart';
 import 'package:anfibius_uwu/printers.dart';
 import 'package:anfibius_uwu/settings_screen.dart';
 import 'package:flutter/material.dart';
@@ -24,7 +25,7 @@ class _ConfiguracionesState extends State<Configuraciones> {
         child: SizedBox(
           width: double.infinity,
           child: DefaultTabController(
-            length: 2,
+            length: 3,
             child: Column(
               children: [
                 Expanded(
@@ -33,7 +34,7 @@ class _ConfiguracionesState extends State<Configuraciones> {
                       // First tab content
                       GeneralSettingsScreen(),
                       PrinterConfig(),
-                      // Second tab content
+                      LectorHuella(),
                     ],
                   ),
                 ),
@@ -41,6 +42,7 @@ class _ConfiguracionesState extends State<Configuraciones> {
                   tabs: const [
                     Tab(icon: Icon(Icons.settings), text: 'General'),
                     Tab(icon: Icon(Icons.print), text: 'Impresoras'),
+                    Tab(icon: Icon(Icons.fingerprint), text: 'Lectores'),
                   ],
                 ),
               ],

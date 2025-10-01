@@ -389,10 +389,6 @@ class _MyHomePageState extends State<MyHomePage>
         await objetivosService.completarObjetivo('registrar_estado');
 
         print('✅ Huella dactilar enviada por WebSocket exitosamente');
-        print(
-          '🎯 Objetivos actualizados: ${objetivosService.getResumenProgreso()}',
-        );
-
         // Mostrar notificación de éxito
         NotificationsService().showNotification(
           id: DateTime.now().millisecondsSinceEpoch,
