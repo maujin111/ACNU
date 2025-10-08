@@ -184,17 +184,51 @@ class PrintJobService {
         return false;
       }
 
-      // NUEVO: Verificar si se especifica una impresora específica
-      String? targetPrinterName =
-          request.printerName.isNotEmpty ? request.printerName : null;
+      // **NUEVO: Verificar si se especifica una impresora específica**
+      String? targetPrinterName;
+
+      // Intentar extraer el nombre de la impresora del JSON directamente
+      try {
+        dynamic parsedData = json.decode(jsonMessage);
+        Map<String, dynamic> data;
+        if (parsedData is List && parsedData.isNotEmpty) {
+          data = parsedData[0];
+        } else if (parsedData is Map<String, dynamic>) {
+          data = parsedData;
+        } else {
+          data = {};
+        }
+
+        targetPrinterName =
+            data['printer']?.toString() ??
+            data['impresora']?.toString() ??
+            data['printerName']?.toString();
+      } catch (e) {
+        print('⚠️ Error al extraer nombre de impresora del JSON: $e');
+      }
+
+      // Si no se encontró en el JSON, usar el campo del request
+      if (targetPrinterName == null || targetPrinterName.isEmpty) {
+        targetPrinterName =
+            request.printerName.isNotEmpty ? request.printerName : null;
+      }
 
       // Si se especifica una impresora, verificar que esté conectada
       if (targetPrinterName != null) {
         if (!printerService.isPrinterConnected(targetPrinterName)) {
-          print(
-            '❌ Impresora "$targetPrinterName" no está conectada o no existe',
+          // Intentar buscar por nombre parcial
+          final foundPrinter = printerService.findPrinterByName(
+            targetPrinterName,
           );
-          return false;
+          if (foundPrinter == null) {
+            print(
+              '❌ Impresora "$targetPrinterName" no está conectada o no existe',
+            );
+            return false;
+          } else {
+            // Usar el nombre exacto encontrado
+            targetPrinterName = foundPrinter.deviceName;
+          }
         }
         print('🎯 Imprimiendo en impresora específica: $targetPrinterName');
       } else {
@@ -537,6 +571,44 @@ class PrintJobService {
     } catch (e, stackTrace) {
       print('❌ Error imprimiendo prueba: $e');
       print('📋 Stack trace: $stackTrace');
+      return false;
+    }
+  }
+
+  // **NUEVO: Método para imprimir hoja de prueba en impresora específica**
+  Future<bool> printTestPageToSpecificPrinter(String printerName) async {
+    try {
+      print('🧪 Imprimiendo hoja de prueba en: $printerName');
+
+      final targetPrinter = printerService.findPrinterByName(printerName);
+      if (targetPrinter == null) {
+        print('❌ Impresora "$printerName" no encontrada para hoja de prueba');
+        return false;
+      }
+
+      // Guardar impresora actual
+      final originalSelectedPrinter = printerService.selectedPrinter;
+
+      // Seleccionar la impresora para la prueba temporalmente
+      bool selected = printerService.selectPrinterByName(printerName);
+
+      if (!selected) {
+        print('❌ No se pudo seleccionar impresora para prueba: $printerName');
+        return false;
+      }
+
+      // Procesar la impresión de prueba
+      final result = await printTest(printerName);
+
+      // Restaurar impresora original
+      if (originalSelectedPrinter != null) {
+        printerService.selectedPrinter = originalSelectedPrinter;
+        print('🔄 Impresora restaurada después de prueba');
+      }
+
+      return result;
+    } catch (e) {
+      print('❌ Error imprimiendo hoja de prueba: $e');
       return false;
     }
   }

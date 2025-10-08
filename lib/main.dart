@@ -262,6 +262,12 @@ class _MyHomePageState extends State<MyHomePage>
           final String? type =
               data['type']?.toString() ?? data['tipo']?.toString();
 
+          // **NUEVO: Extraer el nombre de la impresora del mensaje**
+          final String? targetPrinterName =
+              data['printer']?.toString() ??
+              data['impresora']?.toString() ??
+              data['printerName']?.toString();
+
           const List<String> allowedTypes = [
             'COMANDA',
             'PREFACTURA',
@@ -278,6 +284,15 @@ class _MyHomePageState extends State<MyHomePage>
           }
 
           print('✅ Tipo de documento válido: $type');
+
+          // **NUEVO: Mostrar información de impresora solicitada**
+          if (targetPrinterName != null) {
+            print('🎯 Impresora solicitada: $targetPrinterName');
+          } else {
+            print(
+              '⚠️ No se especificó impresora en el mensaje, usando la seleccionada por defecto',
+            );
+          }
         } catch (e) {
           print('❌ Error al parsear mensaje JSON: $e');
           return; // Salir silenciosamente si no se puede parsear el JSON

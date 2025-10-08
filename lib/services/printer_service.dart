@@ -1560,6 +1560,53 @@ class PrinterService extends ChangeNotifier {
     }
   }
 
+  // **NUEVO: Buscar impresora por nombre del dispositivo**
+  dynamic findPrinterByName(String printerName) {
+    // Buscar en impresoras conectadas por nombre exacto
+    for (var entry in _connectedPrinters.entries) {
+      if (entry.value.deviceName == printerName) {
+        print('🔍 Impresora encontrada por nombre exacto: $printerName');
+        return entry.value;
+      }
+    }
+
+    // Buscar por nombre parcial (ignorando mayúsculas/minúsculas)
+    for (var entry in _connectedPrinters.entries) {
+      if (entry.value.deviceName?.toLowerCase().contains(
+            printerName.toLowerCase(),
+          ) ==
+          true) {
+        print(
+          '🔍 Impresora encontrada por nombre parcial: ${entry.value.deviceName} (buscado: $printerName)',
+        );
+        return entry.value;
+      }
+    }
+
+    print('❌ No se encontró impresora con nombre: $printerName');
+    print(
+      '📋 Impresoras disponibles: ${_connectedPrinters.values.map((p) => p.deviceName).join(", ")}',
+    );
+    return null;
+  }
+
+  // **NUEVO: Seleccionar impresora por nombre**
+  bool selectPrinterByName(String printerName) {
+    final printer = findPrinterByName(printerName);
+    if (printer != null) {
+      // Buscar el ID de esta impresora
+      for (var entry in _connectedPrinters.entries) {
+        if (entry.value == printer) {
+          selectedPrinter = printer;
+          notifyListeners();
+          print('✅ Impresora seleccionada por nombre: ${printer.deviceName}');
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   // Método para liberar recursos cuando se destruye la instancia
   @override
   void dispose() {
