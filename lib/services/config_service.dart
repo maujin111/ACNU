@@ -321,6 +321,35 @@ class ConfigService {
     await prefs.remove(key);
   }
 
+  static const String _rucKey = 'ruc';
+  static const String _usernameKey = 'username';
+
+  // Guardar RUC
+  static Future<void> saveRuc(String ruc) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_rucKey, ruc);
+  }
+
+  // Cargar RUC
+  static Future<String?> loadRuc() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_rucKey);
+  }
+
+  // Guardar Username
+  static Future<void> saveUsername(String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_usernameKey, username);
+  }
+
+  // Cargar Username
+  static Future<String?> loadUsername() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_usernameKey);
+  }
+
+
+
   // --- MÉTODOS PARA LECTOR DE HUELLAS ---
 
   // Guardar dispositivo de lector de huellas

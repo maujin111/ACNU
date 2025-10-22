@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data'; // Import for Uint8List
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http; // Import for http
+import 'package:anfibius_uwu/services/auth_service.dart';
 import '../services/config_service.dart';
 import '../services/hikvision_sdk.dart';
 
@@ -27,6 +30,9 @@ class FingerprintDevice {
 }
 
 class FingerprintReaderService extends ChangeNotifier {
+  static const String _baseUrl = 'http://localhost:8080'; // Replace with your actual API base URL
+  final AuthService _authService;
+
   // Dispositivos disponibles (simulados por ahora)
   List<FingerprintDevice> _availableDevices = [];
 
@@ -43,6 +49,7 @@ class FingerprintReaderService extends ChangeNotifier {
 
   // SDK de Hikvision
   int _currentDeviceID = -1;
+  int? _currentEmployeeIdForRegistration;
 
   // Última imagen de huella capturada
   Uint8List? _lastFingerprintImage;
@@ -52,12 +59,65 @@ class FingerprintReaderService extends ChangeNotifier {
   Function(String fingerprintData)? onFingerprintRead;
   Function(bool isConnected)? onConnectionChanged;
 
-  FingerprintReaderService() {
+  // Método para iniciar el proceso de registro de huella para un empleado específico
+  void startFingerprintRegistration(int employeeId) {
+    _currentEmployeeIdForRegistration = employeeId;
+    print('🚀 Iniciando registro de huella para empleado ID: $employeeId');
+    // Asegurarse de que el lector esté escaneando
+    if (!_isScanning) {
+      _startFingerprintListening();
+    }
+  }
+
+  // Método para detener el proceso de registro de huella
+  void stopFingerprintRegistration() {
+    _currentEmployeeIdForRegistration = null;
+    print('🛑 Deteniendo registro de huella.');
+    // Opcional: detener la escucha si no hay otras razones para escanear
+    // _stopFingerprintListening();
+  }
+
+  FingerprintReaderService(this._authService) {
     _initService();
   }
 
+  Future<bool> registerFingerprintWithApi(int employeeId, Uint8List fingerprintData) async {
+    final token = await _authService.getToken();
+    if (token == null) {
+      throw Exception('Authentication token not found. Please log in.');
+    }
+
+    final uri = Uri.parse('$_baseUrl/anfibiusback/api/empleados/registarbiometrico?id=$employeeId');
+
+    try {
+      final response = await http.post(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/octet-stream',
+        },
+        body: fingerprintData,
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        if (responseData['status'] == 'ok') {
+          print('✅ Huella registrada exitosamente para el empleado $employeeId');
+          return true;
+        }
+        throw Exception('Failed to register fingerprint: ${responseData['message']}');
+      } else {
+        throw Exception(
+            'Failed to register fingerprint: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      print('Error registering fingerprint: $e');
+      rethrow;
+    }
+  }
+
   // Capturar huella real usando SDK de Hikvision
-  void _captureRealFingerprint() {
+  void _captureRealFingerprint() async {
     if (_currentDeviceID < 0) return;
     try {
       // Primero detectar si hay un dedo en el lector
@@ -100,8 +160,16 @@ class FingerprintReaderService extends ChangeNotifier {
 
           String jsonData = jsonEncode(fingerprintData);
 
-          // Llamar callback
-          onFingerprintRead?.call(jsonData);
+          // Llamar a la API para registrar la huella si hay un empleado en registro
+          if (_currentEmployeeIdForRegistration != null) {
+            await registerFingerprintWithApi(
+                _currentEmployeeIdForRegistration!, templateData);
+            // Opcional: detener el escaneo después de un registro exitoso
+            // stopFingerprintRegistration();
+          } else {
+            // Si no hay un empleado en registro, aún se puede notificar la lectura
+            onFingerprintRead?.call(jsonData);
+          }
 
           notifyListeners();
         }
@@ -300,10 +368,10 @@ class FingerprintReaderService extends ChangeNotifier {
 
     if (_selectedDevice?.type == 'Hikvision SDK') {
       print(
-        '🔧 Modo SDK Hikvision - Las huellas se capturarán automáticamente',
+        '🔧 Modo SDK Hikvision - Re-activando sondeo (Polling) con frecuencia reducida.',
       );
       // Para dispositivos Hikvision reales, usar captura continua
-      _scanTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+      _scanTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
         if (!_isConnected || !_isScanning) {
           timer.cancel();
           _isScanning = false;
@@ -343,7 +411,7 @@ class FingerprintReaderService extends ChangeNotifier {
   }
 
   // Simular lectura de huella
-  void _simulateFingerprintReading() {
+  void _simulateFingerprintReading() async {
     // Generar imagen simulada si no existe
     if (_lastFingerprintImage == null) {
       print('📷 Generando nueva imagen simulada...');
@@ -368,15 +436,18 @@ class FingerprintReaderService extends ChangeNotifier {
 
     String jsonData = jsonEncode(fingerprintData);
 
-    if (_selectedDevice?.id == 'simulated_reader') {
-      print('🔍 [SIMULACIÓN] Huella dactilar generada automáticamente');
+    // Llamar a la API para registrar la huella si hay un empleado en registro
+    if (_currentEmployeeIdForRegistration != null) {
+      // Para simulación, podemos usar los datos base64 decodificados como raw data
+      final simulatedRawData = base64Decode(fingerprintData['fingerprint']);
+      await registerFingerprintWithApi(
+          _currentEmployeeIdForRegistration!, simulatedRawData);
+      // Opcional: detener el escaneo después de un registro exitoso
+      // stopFingerprintRegistration();
     } else {
-      print('🔍 Huella dactilar detectada');
+      // Notificar a través del callback si no hay un empleado en registro
+      onFingerprintRead?.call(jsonData);
     }
-    print('📄 Datos de huella: $jsonData');
-
-    // Notificar a través del callback
-    onFingerprintRead?.call(jsonData);
   }
 
   // Método público para simular lectura manual (para dispositivos no simulados)

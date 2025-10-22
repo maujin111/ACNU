@@ -77,6 +77,21 @@ class HikvisionSDK {
   static bool _initialized = false;
   static bool _deviceOpen = false;
 
+  // Callback para manejar mensajes del SDK
+  static Function(int msgType, Pointer<Void> msgData)? _messageHandler;
+
+  // Puntero al callback nativo. Se guarda para evitar que el GC lo elimine.
+  static Pointer<NativeFunction<FpMessageHandlerNative>>? _callbackPointer;
+
+  // Wrapper para el callback que se pasa al SDK nativo
+  @pragma('vm:entry-point')
+  static void _nativeMessageHandler(int msgType, Pointer<Void> msgData) {
+    print('📬 Mensaje nativo recibido del SDK: tipo=$msgType');
+    if (_messageHandler != null) {
+      _messageHandler!(msgType, msgData);
+    }
+  }
+
   static bool initialize() {
     if (_initialized) return true;
 
@@ -325,6 +340,36 @@ class HikvisionSDK {
   static bool stopCapture() {
     // No hay función específica de stop capture en este SDK
     return true;
+  }
+
+  static bool installMessageHandler(
+    Function(int msgType, Pointer<Void> msgData) handler,
+  ) {
+    if (!_initialized) return false;
+
+    try {
+      _messageHandler = handler;
+
+      // Crear y guardar el puntero solo si no existe, para evitar problemas con el GC.
+      _callbackPointer ??= Pointer.fromFunction<FpMessageHandlerNative>(
+        _nativeMessageHandler,
+      );
+
+      final result = _fpInstallMessageHandler(_callbackPointer!);
+
+      if (result == HikvisionConstants.FP_SUCCESS) {
+        print('✅ Manejador de mensajes instalado correctamente en el SDK.');
+        return true;
+      } else {
+        print(
+          '❌ Error del SDK al instalar el manejador de mensajes: código=$result',
+        );
+        return false;
+      }
+    } catch (e) {
+      print('❌ Excepción en installMessageHandler: $e');
+      return false;
+    }
   }
 
   static Uint8List? captureImage() {

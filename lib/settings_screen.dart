@@ -1,3 +1,5 @@
+import 'package:anfibius_uwu/screens/SessionSettingsForm.dart';
+
 import 'package:anfibius_uwu/services/config_service.dart';
 import 'package:anfibius_uwu/services/startup_service.dart';
 import 'package:anfibius_uwu/services/websocket_service.dart';
@@ -5,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:anfibius_uwu/main.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:anfibius_uwu/screens/employee_management_screen.dart';
 
 class GeneralSettingsScreen extends StatefulWidget {
   const GeneralSettingsScreen({super.key});
@@ -35,6 +38,12 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
         await ConfigService.saveWebSocketToken(cleanToken);
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _tokenController.dispose();
+    super.dispose();
   }
 
   @override
@@ -69,7 +78,6 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
                     controller: _tokenController,
                     decoration: InputDecoration(
                       labelText: 'Token',
-
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
                         icon: Icon(
@@ -218,6 +226,7 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
                   child: Center(
                     child: ElevatedButton(
                       onPressed: () async {
+                        if (!mounted) return;
                         final shouldClose = await showDialog<bool>(
                           context: context,
                           builder: (BuildContext context) {
@@ -248,7 +257,7 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
                             _tokenController.text.trim(),
                           );
                           // Cerrar la aplicación
-                          windowManager.destroy();
+                          await windowManager.destroy();
                         }
                       },
                       style: ElevatedButton.styleFrom(
@@ -266,58 +275,6 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
               ],
             ),
           ),
-          // child: ListView(
-          //   children: [
-          //     ListTile(
-          //       title: const Text('Iniciar con Windows'),
-          //       subtitle: const Text(
-          //         'La aplicación se iniciará automáticamente al arrancar el sistema',
-          //       ),
-          //       trailing: Switch(
-          //         value: startupService.isEnabled,
-          //         onChanged: (value) async {
-          //           await startupService.toggleStartupSetting();
-          //         },
-          //       ),
-          //     ),
-          //     const Divider(),
-          //     ListTile(
-          //       title: const Text('Tema'),
-          //       subtitle: Text(
-          //         themeService.isSystemTheme
-          //             ? 'Usar configuración del sistema'
-          //             : themeService.isDarkMode
-          //             ? 'Modo oscuro'
-          //             : 'Modo claro',
-          //       ),
-          //       trailing: DropdownButton<ThemeMode>(
-          //         value: themeService.themeMode,
-          //         underline: Container(),
-          //         onChanged: (ThemeMode? newValue) {
-          //           if (newValue != null) {
-          //             themeService.setThemeMode(newValue);
-          //           }
-          //         },
-          //         items: const [
-          //           DropdownMenuItem(
-          //             value: ThemeMode.system,
-          //             child: Text('Sistema'),
-          //           ),
-          //           DropdownMenuItem(
-          //             value: ThemeMode.light,
-          //             child: Text('Claro'),
-          //           ),
-          //           DropdownMenuItem(
-          //             value: ThemeMode.dark,
-          //             child: Text('Oscuro'),
-          //           ),
-          //         ],
-          //       ),
-          //     ),
-          //     const Divider(),
-          //     // Aquí puedes agregar más opciones de configuración
-          //   ],
-          // ),
         ),
       ),
     );
