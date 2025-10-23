@@ -348,8 +348,6 @@ class ConfigService {
     return prefs.getString(_usernameKey);
   }
 
-
-
   // --- MÉTODOS PARA LECTOR DE HUELLAS ---
 
   // Guardar dispositivo de lector de huellas

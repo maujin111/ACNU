@@ -5,8 +5,6 @@ class ConnectionStatusView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Text('Estado de Conexión'),
-    );
+    return const Center(child: Text('Estado de Conexión'));
   }
 }

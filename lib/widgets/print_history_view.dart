@@ -5,8 +5,6 @@ class PrintHistoryView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Text('Historial de Impresiones'),
-    );
+    return const Center(child: Text('Historial de Impresiones'));
   }
 }

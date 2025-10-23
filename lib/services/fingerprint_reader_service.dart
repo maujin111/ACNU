@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:math' as math;
-import 'dart:typed_data'; // Import for Uint8List
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http; // Import for http
 import 'package:anfibius_uwu/services/auth_service.dart';
 import '../services/config_service.dart';
-import '../services/hikvision_sdk.dart';
+import '../services/hikvision_sdk.dart' show HikvisionSDK, HikvisionConstants;
 
 // Clase simple para representar un dispositivo
 class FingerprintDevice {
@@ -30,8 +30,9 @@ class FingerprintDevice {
 }
 
 class FingerprintReaderService extends ChangeNotifier {
-  static const String _baseUrl = 'http://localhost:8080'; // Replace with your actual API base URL
-  final AuthService _authService;
+  static const String _baseUrl =
+      'http://localhost:8080'; // Replace with your actual API base URL
+  AuthService _authService;
 
   // Dispositivos disponibles (simulados por ahora)
   List<FingerprintDevice> _availableDevices = [];
@@ -55,14 +56,25 @@ class FingerprintReaderService extends ChangeNotifier {
   Uint8List? _lastFingerprintImage;
   DateTime? _lastCaptureTime;
 
+  // Control de captura para evitar múltiples capturas simultáneas
+  bool _isCapturing = false;
+  DateTime? _lastCaptureAttempt;
+
   // Callbacks
   Function(String fingerprintData)? onFingerprintRead;
   Function(bool isConnected)? onConnectionChanged;
 
+  // Método para actualizar el AuthService
+  void updateAuthService(AuthService newAuthService) {
+    _authService = newAuthService;
+  }
+
   // Método para iniciar el proceso de registro de huella para un empleado específico
   void startFingerprintRegistration(int employeeId) {
     _currentEmployeeIdForRegistration = employeeId;
-    print('🚀 Iniciando registro de huella para empleado ID: $employeeId');
+    developer.log(
+      '🚀 Iniciando registro de huella para empleado ID: $employeeId',
+    );
     // Asegurarse de que el lector esté escaneando
     if (!_isScanning) {
       _startFingerprintListening();
@@ -72,7 +84,7 @@ class FingerprintReaderService extends ChangeNotifier {
   // Método para detener el proceso de registro de huella
   void stopFingerprintRegistration() {
     _currentEmployeeIdForRegistration = null;
-    print('🛑 Deteniendo registro de huella.');
+    developer.log('🛑 Deteniendo registro de huella.');
     // Opcional: detener la escucha si no hay otras razones para escanear
     // _stopFingerprintListening();
   }
@@ -81,19 +93,24 @@ class FingerprintReaderService extends ChangeNotifier {
     _initService();
   }
 
-  Future<bool> registerFingerprintWithApi(int employeeId, Uint8List fingerprintData) async {
+  Future<bool> registerFingerprintWithApi(
+    int employeeId,
+    Uint8List fingerprintData,
+  ) async {
     final token = await _authService.getToken();
     if (token == null) {
       throw Exception('Authentication token not found. Please log in.');
     }
 
-    final uri = Uri.parse('$_baseUrl/anfibiusback/api/empleados/registarbiometrico?id=$employeeId');
+    final uri = Uri.parse(
+      '$_baseUrl/anfibiusBack/api/empleados/registarbiometrico?id=$employeeId',
+    );
 
     try {
       final response = await http.post(
         uri,
         headers: {
-          'Authorization': 'Bearer $token',
+          'Authorization': '$token',
           'Content-Type': 'application/octet-stream',
         },
         body: fingerprintData,
@@ -102,80 +119,119 @@ class FingerprintReaderService extends ChangeNotifier {
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
         if (responseData['status'] == 'ok') {
-          print('✅ Huella registrada exitosamente para el empleado $employeeId');
+          print(
+            '✅ Huella registrada exitosamente para el empleado $employeeId',
+          );
           return true;
         }
-        throw Exception('Failed to register fingerprint: ${responseData['message']}');
+        throw Exception(
+          'Failed to register fingerprint: ${responseData['message']}',
+        );
       } else {
         throw Exception(
-            'Failed to register fingerprint: ${response.statusCode} - ${response.body}');
+          'Failed to register fingerprint: ${response.statusCode} - ${response.body}',
+        );
       }
     } catch (e) {
-      print('Error registering fingerprint: $e');
+      developer.log('Error registering fingerprint: $e');
       rethrow;
     }
   }
 
   // Capturar huella real usando SDK de Hikvision
   void _captureRealFingerprint() async {
-    if (_currentDeviceID < 0) return;
-    try {
-      // Primero detectar si hay un dedo en el lector
-      if (HikvisionSDK.detectFinger()) {
-        // Si hay un dedo, capturar el template
-        final templateData = HikvisionSDK.captureTemplate();
+    // Evitar múltiples capturas simultáneas
+    if (_isCapturing) {
+      return;
+    }
 
-        if (templateData != null && templateData.isNotEmpty) {
-          // Capturar también la imagen de la huella
-          try {
-            final imageData = HikvisionSDK.captureImage();
-            if (imageData != null && imageData.isNotEmpty) {
-              _lastFingerprintImage = Uint8List.fromList(imageData);
-              _lastCaptureTime = DateTime.now();
-
-              // Calcular dimensiones probables basándose en el tamaño
-              int probableWidth = 256; // Ancho típico
-              int probableHeight = imageData.length ~/ probableWidth;
-
-              print('📷 Imagen de huella capturada: ${imageData.length} bytes');
-              print(
-                '📐 Dimensiones calculadas: ${probableWidth}x${probableHeight}',
-              );
-            }
-          } catch (e) {
-            print('⚠️ Error capturando imagen de huella: $e');
-          }
-
-          // Convertir los datos de la huella a base64
-          final base64Data = base64Encode(templateData);
-
-          print('🔍 Huella real capturada: ${base64Data.substring(0, 50)}...');
-
-          // Procesar los datos de la huella
-          Map<String, dynamic> fingerprintData = {
-            'timestamp': DateTime.now().toIso8601String(),
-            'fingerprint': templateData,
-            'simulated': false,
-          };
-
-          String jsonData = jsonEncode(fingerprintData);
-
-          // Llamar a la API para registrar la huella si hay un empleado en registro
-          if (_currentEmployeeIdForRegistration != null) {
-            await registerFingerprintWithApi(
-                _currentEmployeeIdForRegistration!, templateData);
-            // Opcional: detener el escaneo después de un registro exitoso
-            // stopFingerprintRegistration();
-          } else {
-            // Si no hay un empleado en registro, aún se puede notificar la lectura
-            onFingerprintRead?.call(jsonData);
-          }
-
-          notifyListeners();
-        }
+    // Implementar debounce: no capturar si la última captura fue hace menos de 2 segundos
+    if (_lastCaptureAttempt != null) {
+      final timeSinceLastCapture = DateTime.now().difference(
+        _lastCaptureAttempt!,
+      );
+      if (timeSinceLastCapture.inSeconds < 2) {
+        return;
       }
-    } catch (e) {
-      print('⚠️ Error capturando huella real: $e');
+    }
+
+    _isCapturing = true;
+    _lastCaptureAttempt = DateTime.now();
+
+    try {
+      developer.log('🔍 Iniciando captura de huella...');
+
+      final templateData = HikvisionSDK.captureTemplate();
+
+      if (templateData != null && templateData.isNotEmpty) {
+        developer.log('✅ Plantilla capturada: ${templateData.length} bytes');
+
+        // Capturar también la imagen de la huella
+        try {
+          final imageData = HikvisionSDK.captureImage();
+          if (imageData != null && imageData.isNotEmpty) {
+            _lastFingerprintImage = Uint8List.fromList(imageData);
+            _lastCaptureTime = DateTime.now();
+
+            // Calcular dimensiones probables basándose en el tamaño
+            int probableWidth = 256; // Ancho típico
+            int probableHeight = imageData.length ~/ probableWidth;
+
+            developer.log(
+              '📷 Imagen de huella capturada: ${imageData.length} bytes',
+            );
+            developer.log(
+              '📐 Dimensiones calculadas: ${probableWidth}x$probableHeight',
+            );
+          }
+        } catch (e) {
+          developer.log('⚠️ Error capturando imagen de huella: $e');
+        }
+
+        // Convertir los datos de la huella a base64
+        final base64Data = base64Encode(templateData);
+
+        developer.log('🔍 Huella capturada exitosamente');
+
+        // Procesar los datos de la huella
+        Map<String, dynamic> fingerprintData = {
+          'timestamp': DateTime.now().toIso8601String(),
+          'fingerprint': templateData,
+          'simulated': false,
+        };
+
+        String jsonData = jsonEncode(fingerprintData);
+
+        // Llamar a la API para registrar la huella si hay un empleado en registro
+        if (_currentEmployeeIdForRegistration != null) {
+          developer.log(
+            '📤 Enviando huella a la API para empleado ${_currentEmployeeIdForRegistration}...',
+          );
+          try {
+            await registerFingerprintWithApi(
+              _currentEmployeeIdForRegistration!,
+              templateData,
+            );
+            developer.log('✅ Huella registrada exitosamente');
+            // Detener el escaneo después de un registro exitoso
+            stopFingerprintRegistration();
+          } catch (e) {
+            developer.log('❌ Error al registrar huella en API: $e');
+          }
+        } else {
+          // Si no hay un empleado en registro, notificar la lectura
+          onFingerprintRead?.call(jsonData);
+        }
+
+        notifyListeners();
+      } else {
+        developer.log('⚠️ No se pudo capturar la plantilla de la huella');
+      }
+    } catch (e, stackTrace) {
+      developer.log('❌ Error en _captureRealFingerprint: $e');
+      developer.log('Stack trace: $stackTrace');
+    } finally {
+      _isCapturing = false;
     }
   }
 
@@ -197,9 +253,9 @@ class FingerprintReaderService extends ChangeNotifier {
       // Inicializar SDK de Hikvision
       final initResult = HikvisionSDK.initialize();
       if (initResult) {
-        print('✅ SDK de Hikvision inicializado correctamente');
+        developer.log('✅ SDK de Hikvision inicializado correctamente');
       } else {
-        print(
+        developer.log(
           '⚠️ No se pudo inicializar el SDK de Hikvision, usando modo simulación',
         );
       }
@@ -210,40 +266,72 @@ class FingerprintReaderService extends ChangeNotifier {
       // Iniciar verificación periódica del estado
       _initConnectionChecker();
 
-      print('✅ FingerprintReaderService inicializado');
+      developer.log('✅ FingerprintReaderService inicializado');
     } catch (e) {
-      print('❌ Error al inicializar FingerprintReaderService: $e');
+      developer.log('❌ Error al inicializar FingerprintReaderService: $e');
     }
   }
 
   // Escanear dispositivos disponibles
   Future<void> scanDevices() async {
     try {
-      print('🔍 Escaneando dispositivos de huellas...');
+      developer.log('🔍 Escaneando dispositivos de huellas...');
 
       _availableDevices = [];
 
-      // Intentar escanear dispositivos reales usando SDK de Hikvision
-      try {
-        final realDevices = HikvisionSDK.enumDevices();
-        for (var device in realDevices) {
-          _availableDevices.add(
-            FingerprintDevice(
-              id: 'hikvision_${device['id']}',
-              name: 'Hikvision ${device['name']}',
-              type: 'Hikvision SDK',
-            ),
-          );
+      // Verificar si el SDK de Hikvision está inicializado y disponible
+      bool sdkAvailable = HikvisionSDK.isInitialized();
+      developer.log(
+        '🔧 Estado inicial del SDK Hikvision: ${sdkAvailable ? "Inicializado" : "No inicializado"}',
+      );
+
+      // Si no está inicializado, intentar inicializarlo ahora
+      if (!sdkAvailable) {
+        developer.log('🔄 Intentando inicializar el SDK de Hikvision...');
+        sdkAvailable = HikvisionSDK.initialize();
+        if (sdkAvailable) {
+          developer.log('✅ SDK de Hikvision inicializado exitosamente');
+        } else {
+          developer.log('❌ No se pudo inicializar el SDK de Hikvision');
+          developer.log('   Verifica que la DLL esté en la ubicación correcta');
         }
-        print(
-          '✅ Encontrados ${realDevices.length} dispositivos reales Hikvision',
-        );
-      } catch (e) {
-        print('⚠️ No se pudieron escanear dispositivos reales: $e');
       }
 
-      // Agregar dispositivos simulados si no hay reales disponibles
+      // Intentar escanear dispositivos reales si el SDK está disponible
+      if (sdkAvailable) {
+        try {
+          final realDevices = HikvisionSDK.enumDevices();
+          developer.log(
+            '🔍 enumDevices retornó ${realDevices.length} dispositivos',
+          );
+
+          for (var device in realDevices) {
+            _availableDevices.add(
+              FingerprintDevice(
+                id: 'hikvision_${device['id']}',
+                name: 'Hikvision ${device['name']}',
+                type: 'Hikvision SDK',
+              ),
+            );
+          }
+
+          if (realDevices.isNotEmpty) {
+            developer.log(
+              '✅ Encontrados ${realDevices.length} dispositivos reales Hikvision',
+            );
+          } else {
+            developer.log(
+              '⚠️ SDK inicializado pero no se encontraron dispositivos conectados',
+            );
+          }
+        } catch (e) {
+          developer.log('⚠️ Error al escanear dispositivos reales: $e');
+        }
+      }
+
+      // Agregar dispositivos simulados SOLO si no hay dispositivos reales
       if (_availableDevices.isEmpty) {
+        developer.log('➕ Agregando dispositivos simulados como fallback');
         _availableDevices = [
           FingerprintDevice(
             id: 'hikvision_ds_k1f820',
@@ -256,25 +344,34 @@ class FingerprintReaderService extends ChangeNotifier {
             type: 'Simulado',
           ),
         ];
+      } else {
+        // Agregar opción de simulado adicional para pruebas
+        _availableDevices.add(
+          FingerprintDevice(
+            id: 'simulated_reader',
+            name: 'Lector Simulado (Para Pruebas)',
+            type: 'Simulado',
+          ),
+        );
       }
 
-      print(
-        '📱 Encontrados ${_availableDevices.length} dispositivos de huellas disponibles',
+      developer.log(
+        '📱 Total de dispositivos disponibles: ${_availableDevices.length}',
       );
       for (var device in _availableDevices) {
-        print('  - ${device.name} (${device.type})');
+        developer.log('  - ${device.name} (${device.type})');
       }
 
       notifyListeners();
     } catch (e) {
-      print('❌ Error al escanear dispositivos: $e');
+      developer.log('❌ Error al escanear dispositivos: $e');
     }
   }
 
   // Seleccionar dispositivo
   Future<void> selectDevice(FingerprintDevice device) async {
     try {
-      print('🔌 Seleccionando dispositivo: ${device.name}');
+      developer.log('🔌 Seleccionando dispositivo: ${device.name}');
 
       // Desconectar dispositivo anterior si existe
       if (_isConnected) {
@@ -296,19 +393,19 @@ class FingerprintReaderService extends ChangeNotifier {
 
       notifyListeners();
     } catch (e) {
-      print('❌ Error al seleccionar dispositivo: $e');
+      developer.log('❌ Error al seleccionar dispositivo: $e');
     }
   }
 
   // Conectar al dispositivo seleccionado
   Future<bool> connectToDevice() async {
     if (_selectedDevice == null) {
-      print('❌ No hay dispositivo seleccionado para conectar');
+      developer.log('❌ No hay dispositivo seleccionado para conectar');
       return false;
     }
 
     try {
-      print('🔌 Conectando a: ${_selectedDevice!.name}');
+      developer.log('🔌 Conectando a: ${_selectedDevice!.name}');
 
       bool connectionSuccess = false;
 
@@ -321,6 +418,17 @@ class FingerprintReaderService extends ChangeNotifier {
           if (openResult) {
             connectionSuccess = true;
             print('✅ Dispositivo Hikvision conectado exitosamente');
+
+            // Instalar el manejador de mensajes para recibir eventos del lector
+            HikvisionSDK.installMessageHandler((msgType, msgData) {
+              if (msgType == HikvisionConstants.FP_MSG_PRESS_FINGER) {
+                // Solo capturar si no hay una captura en progreso
+                if (!_isCapturing) {
+                  developer.log('👆 Dedo detectado, iniciando captura...');
+                  _captureRealFingerprint();
+                }
+              }
+            });
           } else {
             print('❌ No se pudo abrir el dispositivo Hikvision');
           }
@@ -339,9 +447,6 @@ class FingerprintReaderService extends ChangeNotifier {
       if (_isConnected) {
         print('✅ Conectado exitosamente al lector de huellas');
 
-        // Iniciar escucha de huellas
-        _startFingerprintListening();
-
         // Notificar cambio de conexión
         onConnectionChanged?.call(_isConnected);
       }
@@ -357,6 +462,16 @@ class FingerprintReaderService extends ChangeNotifier {
     }
   }
 
+  // Método para iniciar la escucha de huellas desde la UI
+  void startListening() {
+    _startFingerprintListening();
+  }
+
+  // Método para detener la escucha de huellas desde la UI
+  void stopListening() {
+    _stopFingerprintListening();
+  }
+
   // Iniciar escucha de datos de huella
   void _startFingerprintListening() {
     if (_isScanning) {
@@ -367,18 +482,9 @@ class FingerprintReaderService extends ChangeNotifier {
     print('👂 Iniciando escucha de huellas dactilares...');
 
     if (_selectedDevice?.type == 'Hikvision SDK') {
-      print(
-        '🔧 Modo SDK Hikvision - Re-activando sondeo (Polling) con frecuencia reducida.',
-      );
-      // Para dispositivos Hikvision reales, usar captura continua
-      _scanTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
-        if (!_isConnected || !_isScanning) {
-          timer.cancel();
-          _isScanning = false;
-          return;
-        }
-        _captureRealFingerprint();
-      });
+      HikvisionSDK.startCapture();
+      print('🔧 Modo SDK Hikvision - Esperando eventos del lector...');
+      // La captura se inicia por el callback de `installMessageHandler`
     } else if (_selectedDevice?.id == 'simulated_reader') {
       print(
         '🔧 Modo simulación activado - Las huellas se generarán automáticamente cada 5 segundos',
@@ -395,18 +501,26 @@ class FingerprintReaderService extends ChangeNotifier {
     } else {
       print('⚠️ Modo real - Esperando colocar dedo en el lector...');
       // Para dispositivos reales, esperar entrada del usuario
-      // En implementación real, esto se conectaría al driver del dispositivo
-      _scanTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
-        if (!_isConnected || !_isScanning) {
-          timer.cancel();
-          _isScanning = false;
-          return;
-        }
-        // Aquí iría la lectura real del dispositivo
-        // Por ahora, solo mantener el timer activo
-      });
     }
 
+    notifyListeners();
+  }
+
+  // Detener escucha de datos de huella
+  void _stopFingerprintListening() {
+    if (!_isScanning) {
+      return; // No está escuchando
+    }
+
+    _isScanning = false;
+    _scanTimer?.cancel();
+
+    if (_selectedDevice?.type == 'Hikvision SDK') {
+      HikvisionSDK.stopCapture();
+      print('🛑 Deteniendo captura del SDK Hikvision.');
+    }
+
+    print('🛑 Deteniendo escucha de huellas dactilares.');
     notifyListeners();
   }
 
@@ -441,7 +555,9 @@ class FingerprintReaderService extends ChangeNotifier {
       // Para simulación, podemos usar los datos base64 decodificados como raw data
       final simulatedRawData = base64Decode(fingerprintData['fingerprint']);
       await registerFingerprintWithApi(
-          _currentEmployeeIdForRegistration!, simulatedRawData);
+        _currentEmployeeIdForRegistration!,
+        simulatedRawData,
+      );
       // Opcional: detener el escaneo después de un registro exitoso
       // stopFingerprintRegistration();
     } else {
@@ -675,7 +791,7 @@ class FingerprintReaderService extends ChangeNotifier {
     final imageData = Uint8List(width * height);
 
     print(
-      '🎨 Generando imagen simulada de ${width}x${height} = ${width * height} bytes',
+      '🎨 Generando imagen simulada de ${width}x$height = ${width * height} bytes',
     );
 
     // Crear un patrón simple que parezca una huella

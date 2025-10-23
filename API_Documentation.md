@@ -87,7 +87,7 @@ This endpoint allows you to retrieve a list of all employees, with optional filt
 * `offset`: `int` - Number of results to skip (for pagination).
 
 **Example Request:**
-`GET /anfibiusback/api/empleados?limit=10&offset=0&tipoconsul=CExNA&busqueda=Juan`
+`GET /anfibiusBack/api/empleados?id=&limit=10&offset=0&busqueda=&tipoconsul=CExNA`
 
 ### Response
 

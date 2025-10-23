@@ -2,10 +2,9 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:anfibius_uwu/models/employee.dart';
 import 'package:anfibius_uwu/services/auth_service.dart';
+import 'package:anfibius_uwu/services/api_constants.dart';
 
 class EmployeeService {
-  static const String _baseUrl =
-      'http://localhost:8080'; // Replace with your actual API base URL
   final AuthService _authService;
 
   EmployeeService(this._authService);
@@ -22,27 +21,28 @@ class EmployeeService {
       throw Exception('Authentication token not found. Please log in.');
     }
 
-    final Map<String, String> queryParams = {};
-    if (id != null) queryParams['id'] = id.toString();
-    if (searchTerm != null) queryParams['busqueda'] = searchTerm;
-    if (searchType != null) queryParams['tipoconsul'] = searchType;
-    if (limit != null) queryParams['limit'] = limit.toString();
-    if (offset != null) queryParams['offset'] = offset.toString();
+    final Map<String, String> queryParams = {
+      'id': id?.toString() ?? '',
+      'limit': limit?.toString() ?? '10',
+      'offset': offset?.toString() ?? '0',
+      'busqueda': searchTerm ?? '',
+      'tipoconsul': searchType ?? 'CExNA',
+    };
 
     final uri = Uri.parse(
-      '$_baseUrl/anfibiusback/api/empleados',
+      '${ApiConstants.baseUrl}/anfibiusBack/api/empleados',
     ).replace(queryParameters: queryParams);
+
+    print('Fetching employees from: $uri');
 
     try {
       final response = await http.get(
         uri,
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
+        headers: {'Authorization': token, 'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
+        print(response.body);
         final responseData = json.decode(response.body);
         if (responseData['status'] == 'ok' && responseData['data'] is List) {
           return (responseData['data'] as List)

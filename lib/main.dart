@@ -12,7 +12,6 @@ import 'package:anfibius_uwu/services/notifications_service.dart';
 import 'package:anfibius_uwu/services/auth_service.dart';
 import 'package:anfibius_uwu/screens/main_screen.dart';
 
-
 // Solo importar dependencias de escritorio en plataformas compatibles
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -132,8 +131,14 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => WebSocketService()),
         ChangeNotifierProvider(create: (_) => PrinterService()),
         ChangeNotifierProvider(create: (_) => AuthService()),
-        ProxyProvider<AuthService, FingerprintReaderService>(
-          update: (_, authService, __) => FingerprintReaderService(authService),
+        ChangeNotifierProxyProvider<AuthService, FingerprintReaderService>(
+          create:
+              (context) => FingerprintReaderService(
+                Provider.of<AuthService>(context, listen: false),
+              ),
+          update:
+              (context, authService, fingerprintReaderService) =>
+                  fingerprintReaderService!..updateAuthService(authService),
         ),
         ChangeNotifierProvider(create: (_) => ObjetivosService()),
         ProxyProvider<PrinterService, PrintJobService>(

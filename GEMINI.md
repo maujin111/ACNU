@@ -1,7 +1,3 @@
-# GEMINI.md - Guía de Contexto para el Proyecto Anfibius Connect Nexus Utility
-
-## 🎯 PROPÓSITO DE ESTE DOCUMENTO
-
 Este documento proporciona el contexto completo del proyecto para que Gemini (o cualquier IA) pueda trabajar de manera ordenada y comprenda:
 
 1. ✅ **QUÉ FUNCIONA** - Lo que ya está implementado y **NO debe modificarse** sin petición explícita

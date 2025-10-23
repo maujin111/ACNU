@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 class SessionSettingsForm extends StatefulWidget {
-  const SessionSettingsForm();
+  const SessionSettingsForm({super.key});
 
   @override
   State<SessionSettingsForm> createState() => SessionSettingsFormState();

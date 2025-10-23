@@ -19,7 +19,7 @@ class FingerprintRegistrationScreen extends StatefulWidget {
 
 class _FingerprintRegistrationScreenState
     extends State<FingerprintRegistrationScreen> {
-  String _statusMessage = 'Place finger on reader...';
+  String _statusMessage = 'Coloque su huella en el lector';
   bool _isRegistering = false;
 
   @override
@@ -31,7 +31,7 @@ class _FingerprintRegistrationScreenState
   void _startRegistration() async {
     setState(() {
       _isRegistering = true;
-      _statusMessage = 'Waiting for fingerprint...';
+      _statusMessage = 'Esperando huella...';
     });
 
     final fingerprintService = Provider.of<FingerprintReaderService>(
@@ -46,21 +46,6 @@ class _FingerprintRegistrationScreenState
 
     // Start the registration process in the service
     fingerprintService.startFingerprintRegistration(widget.employeeId);
-
-    // Listen for connection changes to update UI
-    fingerprintService.onConnectionChanged = (isConnected) {
-      if (!mounted) return; // Add mounted check here
-      if (!isConnected) {
-        setState(() {
-          _statusMessage = 'Reader disconnected. Please reconnect.';
-          _isRegistering = false;
-        });
-      } else if (_isRegistering) {
-        setState(() {
-          _statusMessage = 'Reader connected. Waiting for fingerprint...';
-        });
-      }
-    };
 
     // You might want a mechanism to know when the API call succeeds/fails
     // For now, we rely on the service's internal print statements.
@@ -81,7 +66,7 @@ class _FingerprintRegistrationScreenState
     final fingerprintService = Provider.of<FingerprintReaderService>(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Register Fingerprint')),
+      appBar: AppBar(title: const Text('Registrar Huella')),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -89,7 +74,7 @@ class _FingerprintRegistrationScreenState
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
               Text(
-                'Registering fingerprint for:',
+                'Registrar huella para:',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               Text(
@@ -97,18 +82,15 @@ class _FingerprintRegistrationScreenState
                 style: Theme.of(context).textTheme.headlineSmall,
               ),
               const SizedBox(height: 32.0),
-              if (fingerprintService.lastFingerprintImage != null)
-                Image.memory(
-                  fingerprintService.lastFingerprintImage!,
-                  width: 150,
-                  height: 150,
-                  fit: BoxFit.contain,
-                )
-              else
-                const Icon(Icons.fingerprint, size: 100, color: Colors.grey),
+
+              const Icon(Icons.fingerprint, size: 100, color: Colors.grey),
               const SizedBox(height: 32.0),
               Text(
-                _statusMessage,
+                fingerprintService.isConnected
+                    ? (_isRegistering
+                        ? 'Esperando huella...'
+                        : 'Lector conectado.')
+                    : 'Lector desconectado. Por favor, reconectar.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleMedium,
               ),
@@ -118,7 +100,7 @@ class _FingerprintRegistrationScreenState
               else
                 ElevatedButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Done'),
+                  child: const Text('Listo'),
                 ),
             ],
           ),

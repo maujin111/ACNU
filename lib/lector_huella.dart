@@ -194,46 +194,77 @@ class _LectorHuellaState extends State<LectorHuella> {
                 // Botones de acción
                 Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: () async {
-                          await fingerprintService.scanDevices();
-                          if (mounted) {
-                            _showDeviceSelectionDialog(
-                              context,
-                              fingerprintService,
-                            );
-                          }
-                        },
-                        icon: const Icon(Icons.search),
-                        label: const Text('Buscar Dispositivos'),
-                      ),
-                      if (fingerprintService.isConnected)
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
                         ElevatedButton.icon(
                           onPressed: () async {
-                            await fingerprintService.disconnect();
+                            await fingerprintService.scanDevices();
+                            if (mounted) {
+                              _showDeviceSelectionDialog(
+                                context,
+                                fingerprintService,
+                              );
+                            }
                           },
-                          icon: const Icon(Icons.link_off),
-                          label: const Text('Desconectar'),
-                          style: ElevatedButton.styleFrom(
-                            foregroundColor: Colors.red,
-                          ),
+                          icon: const Icon(Icons.search),
+                          label: const Text('Buscar Dispositivos'),
                         ),
-                      if (fingerprintService.selectedDevice != null &&
-                          !fingerprintService.isConnected)
-                        ElevatedButton.icon(
-                          onPressed: () async {
-                            await fingerprintService.connectToDevice();
-                          },
-                          icon: const Icon(Icons.link),
-                          label: const Text('Conectar'),
-                          style: ElevatedButton.styleFrom(
-                            foregroundColor: Colors.green,
+                        if (fingerprintService.isConnected) ...[
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              await fingerprintService.disconnect();
+                            },
+                            icon: const Icon(Icons.link_off),
+                            label: const Text('Desconectar'),
+                            style: ElevatedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                            ),
                           ),
-                        ),
-                    ],
+                        ],
+                        if (fingerprintService.selectedDevice != null &&
+                            !fingerprintService.isConnected) ...[
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              await fingerprintService.connectToDevice();
+                            },
+                            icon: const Icon(Icons.link),
+                            label: const Text('Conectar'),
+                            style: ElevatedButton.styleFrom(
+                              foregroundColor: Colors.green,
+                            ),
+                          ),
+                        ],
+                        if (fingerprintService.isConnected &&
+                            !fingerprintService.isScanning) ...[
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              fingerprintService.startListening();
+                            },
+                            icon: const Icon(Icons.play_arrow),
+                            label: const Text('Iniciar Escucha'),
+                            style: ElevatedButton.styleFrom(
+                              foregroundColor: Colors.blue,
+                            ),
+                          ),
+                        ],
+                        if (fingerprintService.isConnected &&
+                            fingerprintService.isScanning) ...[
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              fingerprintService.stopListening();
+                            },
+                            icon: const Icon(Icons.stop),
+                            label: const Text('Detener Escucha'),
+                            style: ElevatedButton.styleFrom(
+                              foregroundColor: Colors.orange,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
                 const Divider(),
@@ -380,7 +411,7 @@ class _LectorHuellaState extends State<LectorHuella> {
         // Verificar si las dimensiones son razonables
         if (height < 100 || height > 500) {
           print(
-            '⚠️ Dimensiones calculadas no son razonables: ${width}x${height}',
+            '⚠️ Dimensiones calculadas no son razonables: ${width}x$height',
           );
           return _buildErrorImage(
             'Tamaño de imagen no soportado: ${imageData.length} bytes',
@@ -389,7 +420,7 @@ class _LectorHuellaState extends State<LectorHuella> {
       }
 
       print(
-        '✅ Dimensiones de imagen determinadas: ${width}x${height} = ${width * height} bytes',
+        '✅ Dimensiones de imagen determinadas: ${width}x$height = ${width * height} bytes',
       );
 
       // Verificar que tenemos exactamente los datos esperados

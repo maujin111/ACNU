@@ -1,6 +1,7 @@
 import 'dart:ffi';
 import 'dart:io';
-import 'dart:typed_data';
+import 'dart:async'; // Import for Timer
+import 'dart:developer' as developer; // Import for developer.log
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 
@@ -64,7 +65,7 @@ class HikvisionSDK {
   )
   _fpInstallMessageHandler;
   static late int Function(Pointer<Uint8> template) _fpFpEnroll;
-  static late int Function(Pointer<Uint8> template) _fpGetQuality;
+  static late int Function(Pointer<Uint8> quality) _fpGetQuality;
   static late int Function(
     Pointer<Uint8> template1,
     Pointer<Uint8> template2,
@@ -76,6 +77,7 @@ class HikvisionSDK {
 
   static bool _initialized = false;
   static bool _deviceOpen = false;
+  static Timer? _captureTimer;
 
   // Callback para manejar mensajes del SDK
   static Function(int msgType, Pointer<Void> msgData)? _messageHandler;
@@ -83,13 +85,18 @@ class HikvisionSDK {
   // Puntero al callback nativo. Se guarda para evitar que el GC lo elimine.
   static Pointer<NativeFunction<FpMessageHandlerNative>>? _callbackPointer;
 
+  // Método público para verificar si el SDK está inicializado
+  static bool isInitialized() => _initialized;
+
   // Wrapper para el callback que se pasa al SDK nativo
   @pragma('vm:entry-point')
   static void _nativeMessageHandler(int msgType, Pointer<Void> msgData) {
-    print('📬 Mensaje nativo recibido del SDK: tipo=$msgType');
-    if (_messageHandler != null) {
-      _messageHandler!(msgType, msgData);
+    // Filtrar mensajes para reducir el ruido - solo procesar mensajes relevantes
+    if (msgType == HikvisionConstants.FP_MSG_PRESS_FINGER) {
+      // No hacer log aquí para evitar spam, el servicio ya lo hace
+      _messageHandler?.call(msgType, msgData);
     }
+    // Ignorar otros tipos de mensajes silenciosamente
   }
 
   static bool initialize() {
@@ -101,7 +108,7 @@ class HikvisionSDK {
       if (!kIsWeb && Platform.isWindows) {
         executablePath = Platform.resolvedExecutable;
         final executableDir = File(executablePath).parent.path;
-        print('📁 Directorio del ejecutable: $executableDir');
+        developer.log('📁 Directorio del ejecutable: $executableDir');
       }
 
       // Lista de posibles rutas para la DLL del SDK
@@ -131,18 +138,20 @@ class HikvisionSDK {
       // Intentar cargar la DLL desde diferentes ubicaciones
       for (String path in possiblePaths) {
         try {
-          print('🔍 Intentando cargar SDK desde: $path');
+          developer.log('🔍 Intentando cargar SDK desde: $path');
           loadedLib = DynamicLibrary.open(path);
-          print('✅ SDK cargado exitosamente desde: $path');
+          developer.log('✅ SDK cargado exitosamente desde: $path');
           break;
         } catch (e) {
-          print('⚠️ No se pudo cargar desde $path: $e');
+          developer.log('⚠️ No se pudo cargar desde $path: $e');
           continue;
         }
       }
 
       if (loadedLib == null) {
-        print('❌ No se pudo encontrar la DLL del SDK en ninguna ubicación');
+        developer.log(
+          '❌ No se pudo encontrar la DLL del SDK en ninguna ubicación',
+        );
         return false;
       }
 
@@ -163,6 +172,22 @@ class HikvisionSDK {
         Int32 Function(Pointer<Uint8>, Pointer<Int32>, Pointer<Int32>),
         int Function(Pointer<Uint8>, Pointer<Int32>, Pointer<Int32>)
       >('FPModule_CaptureImage');
+      _fpInstallMessageHandler = _lib!.lookupFunction<
+        Int32 Function(Pointer<NativeFunction<FpMessageHandlerNative>>),
+        int Function(Pointer<NativeFunction<FpMessageHandlerNative>>)
+      >('FPModule_InstallMessageHandler');
+      _fpFpEnroll = _lib!.lookupFunction<
+        Int32 Function(Pointer<Uint8>),
+        int Function(Pointer<Uint8>)
+      >('FPModule_FpEnroll');
+      _fpGetDeviceInfo = _lib!.lookupFunction<
+        Int32 Function(Pointer<Int8>),
+        int Function(Pointer<Int8>)
+      >('FPModule_GetDeviceInfo');
+      _fpGetSDKVersion = _lib!.lookupFunction<
+        Int32 Function(Pointer<Int8>),
+        int Function(Pointer<Int8>)
+      >('FPModule_GetSDKVersion');
       _fpSetTimeout = _lib!
           .lookupFunction<Int32 Function(Int32), int Function(int)>(
             'FPModule_SetTimeout',
@@ -179,37 +204,13 @@ class HikvisionSDK {
         Int32 Function(Pointer<Int32>),
         int Function(Pointer<Int32>)
       >('FPModule_GetCollectTimes');
-      _fpInstallMessageHandler = _lib!.lookupFunction<
-        Int32 Function(Pointer<NativeFunction<FpMessageHandlerNative>>),
-        int Function(Pointer<NativeFunction<FpMessageHandlerNative>>)
-      >('FPModule_InstallMessageHandler');
-      _fpFpEnroll = _lib!.lookupFunction<
-        Int32 Function(Pointer<Uint8>),
-        int Function(Pointer<Uint8>)
-      >('FPModule_FpEnroll');
-      _fpGetQuality = _lib!.lookupFunction<
-        Int32 Function(Pointer<Uint8>),
-        int Function(Pointer<Uint8>)
-      >('FPModule_GetQuality');
-      _fpMatchTemplate = _lib!.lookupFunction<
-        Int32 Function(Pointer<Uint8>, Pointer<Uint8>, Int32),
-        int Function(Pointer<Uint8>, Pointer<Uint8>, int)
-      >('FPModule_MatchTemplate');
-      _fpGetDeviceInfo = _lib!.lookupFunction<
-        Int32 Function(Pointer<Int8>),
-        int Function(Pointer<Int8>)
-      >('FPModule_GetDeviceInfo');
-      _fpGetSDKVersion = _lib!.lookupFunction<
-        Int32 Function(Pointer<Int8>),
-        int Function(Pointer<Int8>)
-      >('FPModule_GetSDKVersion');
 
       _initialized = true;
-      print('✅ SDK Hikvision inicializado exitosamente');
+      developer.log('✅ SDK Hikvision inicializado exitosamente');
 
       return _initialized;
     } catch (e) {
-      print('❌ Error cargando SDK Hikvision: $e');
+      developer.log('❌ Error cargando SDK Hikvision: $e');
       return false;
     }
   }
@@ -221,9 +222,9 @@ class HikvisionSDK {
           closeDevice();
         }
         _initialized = false;
-        print('✅ SDK Hikvision limpiado');
+        developer.log('✅ SDK Hikvision limpiado');
       } catch (e) {
-        print('⚠️ Error al limpiar SDK: $e');
+        developer.log('⚠️ Error al limpiar SDK: $e');
       }
     }
   }
@@ -249,15 +250,30 @@ class HikvisionSDK {
       final result = _fpOpenDevice();
       _deviceOpen = (result == HikvisionConstants.FP_SUCCESS);
 
-      print(
-        _deviceOpen
-            ? '✅ Dispositivo Hikvision abierto exitosamente'
-            : '❌ Error abriendo dispositivo Hikvision: $result',
-      );
+      if (_deviceOpen) {
+        // Configurar timeout (8000ms = 8 segundos)
+        final timeoutResult = _fpSetTimeout(8000);
+        if (timeoutResult == HikvisionConstants.FP_SUCCESS) {
+          developer.log('✅ Timeout configurado a 8 segundos');
+        } else {
+          developer.log('⚠️ No se pudo configurar timeout: $timeoutResult');
+        }
+        // Configurar número de colecciones (5 intentos)
+        final collectResult = _fpSetCollectTimes(5);
+        if (collectResult == HikvisionConstants.FP_SUCCESS) {
+          developer.log('✅ Colecciones configuradas a 5 intentos');
+        } else {
+          developer.log('⚠️ No se pudo configurar colecciones: $collectResult');
+        }
+
+        developer.log('✅ Dispositivo Hikvision abierto exitosamente');
+      } else {
+        developer.log('❌ Error abriendo dispositivo Hikvision: $result');
+      }
 
       return _deviceOpen;
     } catch (e) {
-      print('❌ Error en openDevice: $e');
+      developer.log('❌ Error en openDevice: $e');
       return false;
     }
   }
@@ -273,7 +289,7 @@ class HikvisionSDK {
         _deviceOpen = false;
       }
 
-      print(
+      developer.log(
         success
             ? '✅ Dispositivo Hikvision cerrado'
             : '❌ Error cerrando dispositivo Hikvision: $result',
@@ -281,7 +297,7 @@ class HikvisionSDK {
 
       return success;
     } catch (e) {
-      print('❌ Error en closeDevice: $e');
+      developer.log('❌ Error en closeDevice: $e');
       return false;
     }
   }
@@ -302,7 +318,7 @@ class HikvisionSDK {
         return false;
       }
     } catch (e) {
-      print('❌ Error detectando dedo: $e');
+      developer.log('❌ Error detectando dedo: $e');
       return false;
     }
   }
@@ -322,29 +338,57 @@ class HikvisionSDK {
         return templateData;
       } else {
         malloc.free(template);
-        print('⚠️ Error capturando template: $result');
+        developer.log('⚠️ Error capturando template: $result');
         return null;
       }
     } catch (e) {
-      print('❌ Error en captureTemplate: $e');
+      developer.log('❌ Error en captureTemplate: $e');
       return null;
     }
   }
 
   static bool startCapture() {
-    // No hay función específica de start capture en este SDK
-    // La captura se hace con detectFinger + captureTemplate
-    return _deviceOpen;
-  }
+    if (!_initialized || !_deviceOpen) return false;
+    if (_captureTimer != null && _captureTimer!.isActive) return true;
 
-  static bool stopCapture() {
-    // No hay función específica de stop capture en este SDK
+    developer.log('👂 Iniciando captura continua de huellas...');
+    _captureTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
+      if (!_deviceOpen) {
+        timer.cancel();
+        developer.log('🛑 Deteniendo captura: Dispositivo cerrado.');
+        return;
+      }
+      final fpStatus = malloc<Int32>();
+      final result = _fpDetectFinger(fpStatus);
+
+      if (result == HikvisionConstants.FP_SUCCESS) {
+        final hasFingerprint = fpStatus.value == 1;
+        if (hasFingerprint) {
+          // No hacer log para evitar spam
+          _messageHandler?.call(
+            HikvisionConstants.FP_MSG_PRESS_FINGER,
+            nullptr,
+          );
+        }
+      } else if (result != HikvisionConstants.FP_TIMEOUT) {
+        // Solo registrar errores críticos
+        developer.log('⚠️ Error en _fpDetectFinger: $result');
+      }
+      malloc.free(fpStatus);
+    });
     return true;
   }
 
-  static bool installMessageHandler(
-    Function(int msgType, Pointer<Void> msgData) handler,
-  ) {
+  static bool stopCapture() {
+    if (_captureTimer != null) {
+      _captureTimer!.cancel();
+      _captureTimer = null;
+      developer.log('🛑 Captura continua de huellas detenida.');
+    }
+    return true;
+  }
+
+  static bool installMessageHandler(void Function(int, Pointer<Void>) handler) {
     if (!_initialized) return false;
 
     try {
@@ -358,10 +402,12 @@ class HikvisionSDK {
       final result = _fpInstallMessageHandler(_callbackPointer!);
 
       if (result == HikvisionConstants.FP_SUCCESS) {
-        print('✅ Manejador de mensajes instalado correctamente en el SDK.');
+        developer.log(
+          '✅ Manejador de mensajes instalado correctamente en el SDK.',
+        );
         return true;
       } else {
-        print(
+        developer.log(
           '❌ Error del SDK al instalar el manejador de mensajes: código=$result',
         );
         return false;
@@ -401,7 +447,7 @@ class HikvisionSDK {
         malloc.free(height);
 
         print(
-          '📷 Imagen capturada: ${imageWidth}x${imageHeight}, ${actualSize} bytes',
+          '📷 Imagen capturada: ${imageWidth}x$imageHeight, $actualSize bytes',
         );
         return imageData;
       } else {

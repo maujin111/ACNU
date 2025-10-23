@@ -2,10 +2,9 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
+import 'package:anfibius_uwu/services/api_constants.dart';
 
 class AuthService extends ChangeNotifier {
-  static const String _baseUrl =
-      'http://localhost:8080'; // Replace with your actual API base URL
   static const String _tokenKey = 'auth_token';
   static const String _userIdKey = 'user_id';
 
@@ -27,7 +26,9 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<bool> login(String ruc, String username, String password) async {
-    final url = Uri.parse('$_baseUrl/anfibiusBack/api/usuarios/login');
+    final url = Uri.parse(
+      '${ApiConstants.baseUrl}/anfibiusBack/api/usuarios/login',
+    );
     try {
       final response = await http.post(
         url,
@@ -43,10 +44,11 @@ class AuthService extends ChangeNotifier {
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
-        final token = responseData['token'];
-        final userId = responseData['userId'];
+        final token = responseData['data']['JWT'];
+        final userId =
+            json.decode(responseData['data']['usuario'])['usua_id'].toString();
 
-        if (token != null && userId != null) {
+        if (token != null) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString(_tokenKey, token);
           await prefs.setString(_userIdKey, userId);

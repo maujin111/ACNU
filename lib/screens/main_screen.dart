@@ -1,9 +1,8 @@
 import 'package:anfibius_uwu/configuraciones.dart';
 import 'package:anfibius_uwu/dispositivos.dart';
-import 'package:anfibius_uwu/settings_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:anfibius_uwu/widgets/connection_status_view.dart'; // Assuming this widget exists
-import 'package:anfibius_uwu/widgets/print_history_view.dart'; // Assuming this widget exists
+// Assuming this widget exists
+// Assuming this widget exists
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
