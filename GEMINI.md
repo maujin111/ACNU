@@ -235,19 +235,32 @@ class PrintJobService {
 - ✅ Soporte para Hikvision DS-K1F820-F
 - ✅ Modo de simulación para pruebas
 - ✅ Lectura automática al colocar el dedo
-- ✅ Envío automático por WebSocket
-- ✅ Integración con sistema de objetivos
+- ✅ Registro de huellas para empleados
+- ✅ Sistema de feedback visual de estados
+- ✅ Control de concurrencia y debounce
+- ✅ Detención automática después de registro exitoso
 
 **API Pública:**
 
 ```dart
 class FingerprintReaderService {
+  // Gestión de dispositivos
   Future<void> scanDevices();                               // Escanear dispositivos
   Future<void> connectToDevice(String deviceId);            // Conectar
   void disconnect();                                        // Desconectar
   List<Map<String, dynamic>> get availableDevices;          // Dispositivos disponibles
   bool get isConnected;                                     // Estado de conexión
-  Function(Map<String, dynamic>)? onFingerprintRead;        // Callback de lectura
+  
+  // Lectura y registro
+  void startListening();                                    // Iniciar escucha manual (solo para pruebas)
+  void stopListening();                                     // Detener escucha manual
+  void startFingerprintRegistration(int employeeId);        // Iniciar registro para empleado
+  void stopFingerprintRegistration();                       // Detener registro
+  
+  // Callbacks
+  Function(String fingerprintData)? onFingerprintRead;      // Callback de lectura
+  Function(bool isReading, String? error)? onRegistrationStatusChange;  // Estado del registro
+  Function()? onRegistrationSuccess;                        // Registro exitoso
 }
 ```
 
@@ -256,12 +269,19 @@ class FingerprintReaderService {
 ```json
 {
   "timestamp": "2025-10-22T10:30:00.000Z",
-  "device": "Hikvision DS-K1F820-F",
-  "type": "Real|Simulado",
-  "fingerprint": "base64_encoded_data",
+  "fingerprint": "raw_bytes_array",
   "simulated": false
 }
 ```
+
+**Optimizaciones Implementadas:**
+
+- ⚡ Debounce de 2 segundos entre capturas para evitar lecturas múltiples
+- ⚡ Control de concurrencia con flag `_isCapturing`
+- ⚡ Polling optimizado a 500ms (reducido de 200ms)
+- ⚡ Timeout de SDK configurado a 8 segundos
+- ⚡ 5 intentos de colección por captura
+- ⚡ Detención automática de escucha después de registro exitoso
 
 ---
 

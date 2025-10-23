@@ -160,7 +160,63 @@ This endpoint allows you to retrieve a list of all employees, with optional filt
 
 ---
 
-## 3. Register Fingerprint for an Employee
+## 3. Marcar
+
+Este endopoint permite marcar (timbrar) la entrada o salida de un empleado
+
+### Endpoint
+
+`POST /anfibiusback/api/empleados/marcarbiometrico`
+
+### Request
+
+**Headers:**
+
+* `Authorization: YOUR_AUTH_TOKEN_HERE`
+* `Content-Type: application/octet-stream`
+
+**Body (Raw Binary Data):**
+The request body should contain the raw binary data of the fingerprint. Do **not** Base64 encode it.
+
+**Example Request (Conceptual):**
+`POST /anfibiusback/api/empleados/marcarbiometrico`
+(Body contains raw binary fingerprint data)
+
+### Response
+
+**Status:** `200 OK` on success.
+**Headers:**
+
+* `Content-Type: application/json`
+
+**Body (JSON):**
+
+```json
+{
+  "status": "ok",
+  "code": 200,
+  "message": "Consulta realizada correctamente",
+  "data": {
+    "id_empleado": 5,
+    "pers_id": 12,
+    "nombres": "Juan Carlos",
+    "apellidos": "Ordoñez Vega",
+    "fecha_marcacion": "2025-10-23 09:30:00",
+    "estado": "Marcación registrada"
+  }
+} "data": "Response from DAO (e.g., success message or updated status)"
+}
+```
+
+**Error Responses:**
+
+* `400 Bad Request`: If the `id` is missing or invalid.
+* `500 Internal Server Error`: If there's an error processing the fingerprint data or reading the input stream.
+
+
+
+
+## 4. Register Fingerprint for an Employee
 
 This endpoint allows you to register a fingerprint (huella) for a specific employee.
 

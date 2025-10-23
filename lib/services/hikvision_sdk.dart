@@ -243,37 +243,105 @@ class HikvisionSDK {
     ];
   }
 
-  static bool openDevice() {
-    if (!_initialized) return false;
+  static bool openDevice({int collectTimes = 1}) {
+    if (!_initialized) {
+      developer.log('❌ SDK no inicializado');
+      return false;
+    }
 
     try {
+      developer.log('🔓 Abriendo dispositivo...');
       final result = _fpOpenDevice();
       _deviceOpen = (result == HikvisionConstants.FP_SUCCESS);
 
-      if (_deviceOpen) {
-        // Configurar timeout (8000ms = 8 segundos)
-        final timeoutResult = _fpSetTimeout(8000);
-        if (timeoutResult == HikvisionConstants.FP_SUCCESS) {
-          developer.log('✅ Timeout configurado a 8 segundos');
-        } else {
-          developer.log('⚠️ No se pudo configurar timeout: $timeoutResult');
-        }
-        // Configurar número de colecciones (5 intentos)
-        final collectResult = _fpSetCollectTimes(5);
-        if (collectResult == HikvisionConstants.FP_SUCCESS) {
-          developer.log('✅ Colecciones configuradas a 5 intentos');
-        } else {
-          developer.log('⚠️ No se pudo configurar colecciones: $collectResult');
-        }
-
-        developer.log('✅ Dispositivo Hikvision abierto exitosamente');
-      } else {
-        developer.log('❌ Error abriendo dispositivo Hikvision: $result');
+      if (!_deviceOpen) {
+        developer.log(
+          '❌ Error abriendo dispositivo Hikvision: $result (${_errorCodeToString(result)})',
+        );
+        return false;
       }
 
-      return _deviceOpen;
+      developer.log('✅ Dispositivo Hikvision abierto exitosamente');
+
+      // Configurar parámetros DESPUÉS de abrir el dispositivo
+      // (Algunos SDKs de Hikvision requieren esto)
+      developer.log('🔧 Configurando parámetros (dispositivo abierto)...');
+      developer.log('   - Timeout solicitado: 15 segundos');
+      developer.log('   - Capturas solicitadas: $collectTimes');
+
+      // Configurar timeout - El SDK espera SEGUNDOS (1-60), no milisegundos
+      final timeoutResult = _fpSetTimeout(15); // 15 segundos
+      developer.log(
+        '   - Resultado SetTimeout: $timeoutResult (${_errorCodeToString(timeoutResult)})',
+      );
+      if (timeoutResult == HikvisionConstants.FP_SUCCESS) {
+        developer.log('✅ Timeout configurado a 15 segundos');
+      } else {
+        developer.log(
+          '⚠️ No se pudo configurar timeout (puede que no sea soportado)',
+        );
+      }
+
+      // Configurar número de colecciones
+      final collectResult = _fpSetCollectTimes(collectTimes);
+      developer.log(
+        '   - Resultado SetCollectTimes: $collectResult (${_errorCodeToString(collectResult)})',
+      );
+      if (collectResult == HikvisionConstants.FP_SUCCESS) {
+        developer.log('✅ Colecciones configuradas a $collectTimes captura(s)');
+      } else {
+        developer.log(
+          '⚠️ No se pudo configurar colecciones (puede que no sea soportado)',
+        );
+      }
+
+      developer.log(
+        '📊 Dispositivo listo con configuración: $collectTimes captura(s), timeout 15s',
+      );
+      return true;
     } catch (e) {
       developer.log('❌ Error en openDevice: $e');
+      return false;
+    }
+  }
+
+  // Helper para convertir códigos de error a strings legibles
+  static String _errorCodeToString(int code) {
+    switch (code) {
+      case HikvisionConstants.FP_SUCCESS:
+        return 'SUCCESS';
+      case HikvisionConstants.FP_CONNECTION_ERR:
+        return 'CONNECTION_ERR';
+      case HikvisionConstants.FP_TIMEOUT:
+        return 'TIMEOUT';
+      case HikvisionConstants.FP_ENROLL_FAIL:
+        return 'ENROLL_FAIL';
+      case HikvisionConstants.FP_PARAM_ERR:
+        return 'PARAM_ERR';
+      case HikvisionConstants.FP_EXTRACT_FAIL:
+        return 'EXTRACT_FAIL';
+      case HikvisionConstants.FP_MATCH_FAIL:
+        return 'MATCH_FAIL';
+      default:
+        return 'UNKNOWN($code)';
+    }
+  }
+
+  // Método para reconfigurar el número de colecciones sin cerrar/abrir el dispositivo
+  static bool setCollectTimes(int times) {
+    if (!_initialized || !_deviceOpen) return false;
+
+    try {
+      final result = _fpSetCollectTimes(times);
+      if (result == HikvisionConstants.FP_SUCCESS) {
+        developer.log('✅ Colecciones reconfiguradas a $times captura(s)');
+        return true;
+      } else {
+        developer.log('⚠️ Error reconfigurando colecciones: $result');
+        return false;
+      }
+    } catch (e) {
+      developer.log('❌ Error en setCollectTimes: $e');
       return false;
     }
   }
@@ -324,13 +392,21 @@ class HikvisionSDK {
   }
 
   static Uint8List? captureTemplate() {
-    if (!_initialized || !_deviceOpen) return null;
+    if (!_initialized || !_deviceOpen) {
+      developer.log('❌ SDK no inicializado o dispositivo cerrado');
+      return null;
+    }
 
     try {
+      developer.log('📋 Iniciando FpEnroll (puede tardar varios segundos)...');
       final template = malloc<Uint8>(HikvisionConstants.FP_FTP_MAX);
+
+      // FpEnroll captura la huella y crea la plantilla
+      // Espera que el usuario coloque el dedo N veces (configurado con SetCollectTimes)
       final result = _fpFpEnroll(template);
 
       if (result == HikvisionConstants.FP_SUCCESS) {
+        developer.log('✅ FpEnroll exitoso, creando plantilla...');
         final templateData = Uint8List.fromList(
           template.asTypedList(HikvisionConstants.FP_FTP_MAX),
         );
@@ -338,11 +414,35 @@ class HikvisionSDK {
         return templateData;
       } else {
         malloc.free(template);
-        developer.log('⚠️ Error capturando template: $result');
+        // Decodificar el error
+        String errorMsg;
+        switch (result) {
+          case HikvisionConstants.FP_TIMEOUT:
+            errorMsg =
+                'TIMEOUT - El usuario no colocó el dedo o el sensor no detectó la huella a tiempo';
+            break;
+          case HikvisionConstants.FP_ENROLL_FAIL:
+            errorMsg =
+                'ENROLL_FAIL - Fallo al crear la plantilla (mala calidad o múltiples capturas inconsistentes)';
+            break;
+          case HikvisionConstants.FP_CONNECTION_ERR:
+            errorMsg = 'CONNECTION_ERR - Error de conexión con el dispositivo';
+            break;
+          case HikvisionConstants.FP_PARAM_ERR:
+            errorMsg = 'PARAM_ERR - Parámetros incorrectos';
+            break;
+          case HikvisionConstants.FP_EXTRACT_FAIL:
+            errorMsg =
+                'EXTRACT_FAIL - No se pudo extraer características de la huella';
+            break;
+          default:
+            errorMsg = 'Código de error: $result';
+        }
+        developer.log('⚠️ Error capturando template: $errorMsg');
         return null;
       }
     } catch (e) {
-      developer.log('❌ Error en captureTemplate: $e');
+      developer.log('❌ Excepción en captureTemplate: $e');
       return null;
     }
   }
@@ -352,7 +452,7 @@ class HikvisionSDK {
     if (_captureTimer != null && _captureTimer!.isActive) return true;
 
     developer.log('👂 Iniciando captura continua de huellas...');
-    _captureTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
+    _captureTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
       if (!_deviceOpen) {
         timer.cancel();
         developer.log('🛑 Deteniendo captura: Dispositivo cerrado.');
