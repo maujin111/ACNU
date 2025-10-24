@@ -1,6 +1,7 @@
 import 'package:anfibius_uwu/services/config_service.dart';
 import 'package:anfibius_uwu/services/startup_service.dart';
 import 'package:anfibius_uwu/services/websocket_service.dart';
+import 'package:anfibius_uwu/services/fingerprint_reader_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:anfibius_uwu/main.dart';
@@ -162,6 +163,47 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
                       ),
                     ],
                   ),
+                ),
+                const Divider(),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Text(
+                      "Timbraje Biométrico",
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                  ),
+                ),
+                Consumer<FingerprintReaderService>(
+                  builder: (context, fingerprintService, _) {
+                    return ListTile(
+                      title: const Text('Escucha automática'),
+                      subtitle: const Text(
+                        'Detectar huellas automáticamente al iniciar la aplicación para timbraje',
+                      ),
+                      trailing: Switch(
+                        value: fingerprintService.isAutoListeningEnabled,
+                        onChanged: (value) async {
+                          await fingerprintService.setAutoListeningEnabled(
+                            value,
+                          );
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  value
+                                      ? '✅ Escucha automática habilitada'
+                                      : '🛑 Escucha automática deshabilitada',
+                                ),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    );
+                  },
                 ),
                 const Divider(),
                 Align(

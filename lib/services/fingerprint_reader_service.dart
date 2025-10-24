@@ -71,6 +71,12 @@ class FingerprintReaderService extends ChangeNotifier {
   Function()? onRiseFinger; // Callback para indicar que levante el dedo
   Function()?
   onFingerDetected; // Callback cuando se detecta el dedo durante registro
+  Function(Map<String, dynamic>)?
+  onAttendanceMarked; // Callback cuando se marca asistencia
+
+  // Control de escucha automática
+  bool _autoListeningEnabled = false;
+  bool _isAutoListening = false;
 
   // Método para actualizar el AuthService
   void updateAuthService(AuthService newAuthService) {
@@ -190,6 +196,177 @@ class FingerprintReaderService extends ChangeNotifier {
       }
     } catch (e) {
       developer.log('Error registering fingerprint: $e');
+      rethrow;
+    }
+  }
+
+  // Nuevo método para marcar asistencia con huella
+  Future<Map<String, dynamic>?> markAttendanceWithFingerprint(
+    Uint8List fingerprintData,
+  ) async {
+    final token = await _authService.getToken();
+    if (token == null) {
+      developer.log('❌ Token de autenticación no encontrado');
+      throw Exception('Authentication token not found. Please log in.');
+    }
+
+    try {
+      developer.log('🔍 Buscando coincidencia de huella...');
+
+      // 1. Obtener todas las huellas registradas
+      final empleadosUri = Uri.parse(
+        '$_baseUrl/anfibiusBack/api/empleados?limit=1000&offset=0&busqueda=&tipoconsul=CExNA',
+      );
+
+      final empleadosResponse = await http.get(
+        empleadosUri,
+        headers: {'Authorization': '$token'},
+      );
+
+      if (empleadosResponse.statusCode != 200) {
+        throw Exception(
+          'Error obteniendo empleados: ${empleadosResponse.statusCode}',
+        );
+      }
+
+      final responseBody = json.decode(empleadosResponse.body);
+      final empleados = responseBody['data'] as List;
+      developer.log(
+        '📋 Comparando con ${empleados.length} empleados registrados...',
+      );
+
+      // 2. Comparar con cada huella usando el SDK
+      int? empleadoEncontrado;
+
+      for (var empleado in empleados) {
+        final huellaData = empleado['huella_base64'];
+
+        developer.log(
+          '🔍 Empleado ${empleado['empl_id']} - Huella presente: ${huellaData != null && huellaData.toString().isNotEmpty}',
+        );
+
+        if (huellaData == null || huellaData.toString().isEmpty) {
+          developer.log('   ⏭️ Sin huella registrada, saltando...');
+          continue;
+        }
+
+        String huellaStr = huellaData.toString();
+        developer.log('   📏 Longitud datos: ${huellaStr.length} caracteres');
+        developer.log(
+          '   📝 Primeros caracteres: ${huellaStr.substring(0, huellaStr.length > 20 ? 20 : huellaStr.length)}',
+        );
+
+        // Convertir huella a bytes (puede venir en formato hexadecimal o base64)
+        Uint8List huellaRegistrada;
+        try {
+          // Verificar si viene en formato hexadecimal de PostgreSQL (inicia con \x)
+          if (huellaStr.startsWith(r'\x') || huellaStr.startsWith('\\x')) {
+            developer.log('   🔧 Detectado formato hexadecimal de PostgreSQL');
+            // Remover el prefijo \x o \\x
+            String hexString = huellaStr.replaceFirst(RegExp(r'^\\+x'), '');
+
+            // Convertir hex a bytes
+            huellaRegistrada = Uint8List.fromList(
+              List.generate(
+                hexString.length ~/ 2,
+                (i) =>
+                    int.parse(hexString.substring(i * 2, i * 2 + 2), radix: 16),
+              ),
+            );
+            developer.log(
+              '   ✅ Convertido desde hexadecimal: ${huellaRegistrada.length} bytes',
+            );
+          } else {
+            // Asumir que viene en Base64
+            developer.log('   🔧 Intentando decodificar como Base64');
+            // Limpiar posibles saltos de línea o espacios
+            huellaStr = huellaStr.replaceAll(RegExp(r'\s'), '');
+            huellaRegistrada = base64Decode(huellaStr);
+            developer.log(
+              '   ✅ Decodificado desde Base64: ${huellaRegistrada.length} bytes',
+            );
+          }
+
+          if (huellaRegistrada.length != 512) {
+            developer.log(
+              '   ⚠️ Tamaño incorrecto: esperado 512 bytes, obtenido ${huellaRegistrada.length}',
+            );
+            continue;
+          }
+        } catch (e) {
+          developer.log(
+            '   ❌ Error decodificando huella del empleado ${empleado['empl_id']}: $e',
+          );
+          continue;
+        }
+
+        // Comparar usando el SDK de Hikvision
+        developer.log('   🔄 Comparando huellas...');
+        final coincide = HikvisionSDK.matchTemplates(
+          fingerprintData,
+          huellaRegistrada,
+          securityLevel: 3, // Nivel medio de seguridad
+        );
+
+        if (coincide) {
+          empleadoEncontrado = empleado['empl_id'];
+          developer.log(
+            '✅ ¡COINCIDENCIA! Empleado ID: $empleadoEncontrado (${empleado['pers_nombres']} ${empleado['pers_apellidos']})',
+          );
+          break;
+        } else {
+          developer.log('   ❌ No coincide');
+        }
+      }
+
+      if (empleadoEncontrado == null) {
+        developer.log('❌ Huella no reconocida');
+        throw Exception('Huella no reconocida en el sistema');
+      }
+
+      // 3. Llamar al endpoint de marcación con el ID encontrado
+      final marcacionUri = Uri.parse(
+        '$_baseUrl/anfibiusBack/api/empleados/marcarbiometrico?id=$empleadoEncontrado',
+      );
+
+      final marcacionResponse = await http.get(
+        marcacionUri,
+        headers: {'Authorization': '$token'},
+      );
+
+      developer.log('📥 Respuesta recibida: ${marcacionResponse.statusCode}');
+
+      if (marcacionResponse.statusCode == 200) {
+        final responseData = json.decode(marcacionResponse.body);
+        final data = responseData['data'];
+
+        // Log detallado de la respuesta
+        developer.log('✅ [TIMBRAJE] Marcación exitosa:');
+        developer.log('   - Hora: ${data['hora']}');
+        developer.log(
+          '   - Nombre: ${data['empleado']['nombres']} ${data['empleado']['apellidos']}',
+        );
+        developer.log('   - Fecha: ${data['fecha']}');
+        developer.log('   - Tipo: ${data['tipo']}');
+        developer.log('   - Multado: ${data['multado']}');
+
+        return {
+          'id_empleado': data['empleado']['id'],
+          'nombres': data['empleado']['nombres'],
+          'apellidos': data['empleado']['apellidos'],
+          'fecha_marcacion': data['fecha'],
+          'estado': data['multado'] ? 'Multado' : 'Normal',
+        };
+      } else {
+        developer.log(
+          '❌ Error en marcación: ${marcacionResponse.statusCode} - ${marcacionResponse.body}',
+        );
+        throw Exception(
+          'Failed to mark attendance: ${marcacionResponse.statusCode} - ${marcacionResponse.body}',
+        );
+      }
+    } catch (e) {
+      developer.log('❌ Error al marcar asistencia: $e');
       rethrow;
     }
   }
@@ -381,6 +558,9 @@ class FingerprintReaderService extends ChangeNotifier {
 
       // Cargar dispositivo guardado
       await _loadSavedDevice();
+
+      // Cargar configuración de escucha automática
+      await loadAutoListeningConfig();
 
       // Iniciar verificación periódica del estado
       _initConnectionChecker();
@@ -971,5 +1151,181 @@ class FingerprintReaderService extends ChangeNotifier {
 
     print('✅ Imagen simulada generada: ${imageData.length} bytes');
     return imageData;
+  }
+
+  // Getters para escucha automática
+  bool get isAutoListeningEnabled => _autoListeningEnabled;
+  bool get isAutoListening => _isAutoListening;
+
+  // Habilitar/deshabilitar escucha automática
+  Future<void> setAutoListeningEnabled(bool enabled) async {
+    _autoListeningEnabled = enabled;
+    await ConfigService.saveAutoListeningEnabled(enabled);
+
+    developer.log(
+      '🔧 Escucha automática ${enabled ? "HABILITADA" : "DESHABILITADA"}',
+    );
+
+    if (enabled && !_isAutoListening) {
+      await startAutoListening();
+    } else if (!enabled && _isAutoListening) {
+      stopAutoListening();
+    }
+
+    notifyListeners();
+  }
+
+  // Iniciar escucha automática para timbraje
+  Future<void> startAutoListening() async {
+    if (_isAutoListening) {
+      developer.log('⚠️ Escucha automática ya está activa');
+      return;
+    }
+
+    if (!_isConnected || _selectedDevice == null) {
+      developer.log(
+        '⚠️ No hay dispositivo conectado para iniciar escucha automática',
+      );
+      return;
+    }
+
+    developer.log('🎧 Iniciando escucha automática para timbraje...');
+
+    _isAutoListening = true;
+    _currentEmployeeIdForRegistration =
+        null; // Asegurar que no estamos en modo registro
+
+    // Configurar SDK para modo prueba (1 captura)
+    if (_selectedDevice?.type == 'Hikvision SDK') {
+      HikvisionSDK.stopCapture();
+      HikvisionSDK.closeDevice();
+
+      final openResult = HikvisionSDK.openDevice(collectTimes: 1);
+      if (openResult) {
+        developer.log(
+          '✅ Dispositivo configurado para escucha automática (1 captura)',
+        );
+        _installAutoListeningHandler();
+        HikvisionSDK.startCapture();
+      } else {
+        developer.log(
+          '❌ Error configurando dispositivo para escucha automática',
+        );
+        _isAutoListening = false;
+        return;
+      }
+    }
+
+    notifyListeners();
+    developer.log('✅ Escucha automática iniciada');
+  }
+
+  // Instalar manejador para escucha automática
+  void _installAutoListeningHandler() {
+    HikvisionSDK.installMessageHandler((msgType, msgData) {
+      if (msgType == HikvisionConstants.FP_MSG_PRESS_FINGER) {
+        // Implementar debounce aquí para evitar múltiples eventos
+        if (_lastCaptureAttempt != null) {
+          final timeSinceLastCapture = DateTime.now().difference(
+            _lastCaptureAttempt!,
+          );
+          if (timeSinceLastCapture.inSeconds < 3) {
+            developer.log('⏭️ Ignorando evento (debounce activo)');
+            return;
+          }
+        }
+
+        developer.log('👆 Dedo detectado en escucha automática');
+        _processAutoAttendance();
+      }
+    });
+  }
+
+  // Procesar marcación automática
+  void _processAutoAttendance() async {
+    // Doble verificación de captura en progreso
+    if (_isCapturing) {
+      developer.log('⚠️ Ya hay una captura en progreso');
+      return;
+    }
+
+    _isCapturing = true;
+    _lastCaptureAttempt = DateTime.now();
+
+    try {
+      developer.log('📸 Capturando huella para timbraje...');
+
+      // Verificar presencia del dedo
+      bool fingerDetected = false;
+      for (int i = 0; i < 3; i++) {
+        if (HikvisionSDK.detectFinger()) {
+          fingerDetected = true;
+          break;
+        }
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+
+      if (!fingerDetected) {
+        developer.log('⚠️ No se detectó el dedo');
+        _isCapturing = false;
+        return;
+      }
+
+      // Capturar template
+      final templateData = HikvisionSDK.captureTemplate();
+
+      if (templateData != null && templateData.isNotEmpty) {
+        developer.log(
+          '✅ Template capturado (${templateData.length} bytes), enviando al servidor...',
+        );
+
+        final response = await markAttendanceWithFingerprint(templateData);
+
+        if (response != null) {
+          developer.log('✅ Marcación exitosa en servidor');
+          onAttendanceMarked?.call(response);
+        }
+      } else {
+        developer.log('❌ Error capturando template');
+      }
+    } catch (e) {
+      developer.log('❌ Error en marcación automática: $e');
+    } finally {
+      // Esperar 3 segundos antes de permitir otra captura
+      await Future.delayed(Duration(seconds: 3));
+      _isCapturing = false;
+      developer.log('✅ Sistema listo para nueva captura');
+    }
+  }
+
+  // Detener escucha automática
+  void stopAutoListening() {
+    if (!_isAutoListening) return;
+
+    developer.log('🛑 Deteniendo escucha automática...');
+
+    _isAutoListening = false;
+
+    if (_selectedDevice?.type == 'Hikvision SDK') {
+      HikvisionSDK.stopCapture();
+    }
+
+    notifyListeners();
+    developer.log('✅ Escucha automática detenida');
+  }
+
+  // Cargar configuración de escucha automática
+  Future<void> loadAutoListeningConfig() async {
+    _autoListeningEnabled = await ConfigService.loadAutoListeningEnabled();
+    developer.log(
+      '📂 Configuración cargada: escucha automática ${_autoListeningEnabled ? "HABILITADA" : "DESHABILITADA"}',
+    );
+
+    if (_autoListeningEnabled && _isConnected && !_isAutoListening) {
+      developer.log('🚀 Iniciando escucha automática desde configuración...');
+      await startAutoListening();
+    }
+
+    notifyListeners();
   }
 }

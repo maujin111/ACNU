@@ -204,6 +204,10 @@ class HikvisionSDK {
         Int32 Function(Pointer<Int32>),
         int Function(Pointer<Int32>)
       >('FPModule_GetCollectTimes');
+      _fpMatchTemplate = _lib!.lookupFunction<
+        Int32 Function(Pointer<Uint8>, Pointer<Uint8>, Int32),
+        int Function(Pointer<Uint8>, Pointer<Uint8>, int)
+      >('FPModule_MatchTemplate');
 
       _initialized = true;
       developer.log('✅ SDK Hikvision inicializado exitosamente');
@@ -444,6 +448,61 @@ class HikvisionSDK {
     } catch (e) {
       developer.log('❌ Excepción en captureTemplate: $e');
       return null;
+    }
+  }
+
+  /// Compara dos templates de huellas
+  /// Retorna true si coinciden, false si no
+  /// [template1] y [template2] deben ser de 512 bytes cada uno
+  /// [securityLevel] nivel de seguridad (1-5, donde 5 es más estricto)
+  static bool matchTemplates(
+    Uint8List template1,
+    Uint8List template2, {
+    int securityLevel = 3,
+  }) {
+    if (!_initialized) {
+      developer.log('❌ SDK no inicializado');
+      return false;
+    }
+
+    if (template1.length != HikvisionConstants.FP_FTP_MAX ||
+        template2.length != HikvisionConstants.FP_FTP_MAX) {
+      developer.log(
+        '❌ Templates inválidos: deben ser de ${HikvisionConstants.FP_FTP_MAX} bytes',
+      );
+      return false;
+    }
+
+    try {
+      final ptr1 = malloc<Uint8>(HikvisionConstants.FP_FTP_MAX);
+      final ptr2 = malloc<Uint8>(HikvisionConstants.FP_FTP_MAX);
+
+      // Copiar datos a memoria nativa
+      for (int i = 0; i < HikvisionConstants.FP_FTP_MAX; i++) {
+        ptr1[i] = template1[i];
+        ptr2[i] = template2[i];
+      }
+
+      final result = _fpMatchTemplate(ptr1, ptr2, securityLevel);
+
+      malloc.free(ptr1);
+      malloc.free(ptr2);
+
+      if (result == HikvisionConstants.FP_SUCCESS) {
+        developer.log(
+          '✅ Templates coinciden (nivel de seguridad: $securityLevel)',
+        );
+        return true;
+      } else if (result == HikvisionConstants.FP_MATCH_FAIL) {
+        developer.log('❌ Templates NO coinciden');
+        return false;
+      } else {
+        developer.log('⚠️ Error en comparación: ${_errorCodeToString(result)}');
+        return false;
+      }
+    } catch (e) {
+      developer.log('❌ Excepción en matchTemplates: $e');
+      return false;
     }
   }
 

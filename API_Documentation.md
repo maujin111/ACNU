@@ -99,6 +99,7 @@ This endpoint allows you to retrieve a list of all employees, with optional filt
 **Body (JSON):**
 
 ```json
+
 {
   "status": "ok",
   "code": 200,
@@ -114,6 +115,7 @@ This endpoint allows you to retrieve a list of all employees, with optional filt
       "area_nombre": "SIN AREA",
       "pers_id": 9,
       "empl_estado": true
+      "huella_base64": ""
     },
     {
       "empl_id": 4,
@@ -125,6 +127,7 @@ This endpoint allows you to retrieve a list of all employees, with optional filt
       "area_nombre": "SIN AREA",
       "pers_id": 18,
       "empl_estado": true
+      "huella_base64": ""
     },
     {
       "empl_id": 2,
@@ -136,12 +139,23 @@ This endpoint allows you to retrieve a list of all employees, with optional filt
       "area_nombre": "SIN AREA",
       "pers_id": 3,
       "empl_estado": true
+      "huella_base64": ""
     }
   ],
   "contar": 4,
   "table": "empleados"
 }
 ```
+
+Nota: Este es un ejemplo de huella_base64 que devuelve la consulta "MzAxNi5tJjjEECwxF0i4DjLVFRicBjWhJSicgzQZJjicg0jVFTh0DGONFjiQiXqRFkioFVOdJzig
+EHmRF0ikFV5lJWiIfXjRFUisg49NJzi0GoQFJZiYbZYhJdikZaV9JfjMdKbVFli0I66RJmjYlLVR
+F1icI7spJSitTeTdFLi0LcjJJmjYLdhBF4iwNN6NFgjFS9C9F1isH+dtF+icPPK5F/jBRgVuJ7iw
+wQkuF6i0X+kdJlitgftVFujIbggWFojA5gvyFoi8zRC5FiishsNpFSizN9KZJHiwQkHpJzjAhW7l
+JxjAiMaZJXitGktZFEiAa1VRJFiQ49wxFDiYQv+NJKiQLqwxGDigHP4hKGjReAZmGLjYbhZaFpiw
+ch1+FZjADSKOJzi40fzwJWjgiALRFii4Cws9FzjQhQldJUiYhA+xJEiYeAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAle4zYRMAPGAzYIgHFQoEFHN8EZQbCTJjIguDYhkxErwQ
+I05lRECABokYczBxwA909h0ywLoMGqRzAQExFS3sWkNBJSYadS5E4IoOZYQNIePeCn38RiFxFBIj
+DFc0AVAiN0MjAeCeBQxEKBFAQBdLiSo1k5cNbVoGEmGsE00uVQNhrh2BYVABINgEgwAAAAAAyrE="
 
 ### Models
 
@@ -160,27 +174,28 @@ This endpoint allows you to retrieve a list of all employees, with optional filt
 
 ---
 
-## 3. Marcar
+s
 
-Este endopoint permite marcar (timbrar) la entrada o salida de un empleado
+## 3. Marcar (Timbraje Biométrico)
+
+Este endpoint permite marcar (timbrar) la entrada o salida de un empleado mediante el id
 
 ### Endpoint
 
-`POST /anfibiusback/api/empleados/marcarbiometrico`
+`get /anfibiusback/api/empleados/marcarbiometrico`
 
 ### Request
 
 **Headers:**
 
 * `Authorization: YOUR_AUTH_TOKEN_HERE`
-* `Content-Type: application/octet-stream`
-
-**Body (Raw Binary Data):**
-The request body should contain the raw binary data of the fingerprint. Do **not** Base64 encode it.
 
 **Example Request (Conceptual):**
-`POST /anfibiusback/api/empleados/marcarbiometrico`
-(Body contains raw binary fingerprint data)
+`POST /anfibiusback/api/empleados/marcarbiometrico?id=123`
+
+**Query Parameters:**
+
+* `id`: `int` - The ID of the employee. (e.g., `?id=123`)
 
 ### Response
 
@@ -202,19 +217,24 @@ The request body should contain the raw binary data of the fingerprint. Do **not
     "nombres": "Juan Carlos",
     "apellidos": "Ordoñez Vega",
     "fecha_marcacion": "2025-10-23 09:30:00",
-    "estado": "Marcación registrada"
+    "estado": "Marcación registrada",
+    "tipo_marcacion": "ENTRADA" // or "SALIDA"
   }
-} "data": "Response from DAO (e.g., success message or updated status)"
 }
 ```
 
 **Error Responses:**
 
-* `400 Bad Request`: If the `id` is missing or invalid.
+* `400 Bad Request`: If the fingerprint template is invalid or malformed.
+* `401 Unauthorized`: If the authentication token is missing or invalid.
+* `404 Not Found`: If no employee matches the provided fingerprint.
 * `500 Internal Server Error`: If there's an error processing the fingerprint data or reading the input stream.
 
+**Notes:**
 
-
+* The fingerprint template must be captured using the Hikvision SDK `FpEnroll` function.
+* The system automatically determines if it's an ENTRADA (entry) or SALIDA (exit) based on the employee's last marking.
+* The response includes the employee's full information and the timestamp of the marking.
 
 ## 4. Register Fingerprint for an Employee
 

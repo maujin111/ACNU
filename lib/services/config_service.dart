@@ -63,6 +63,7 @@ class ConfigService {
 
   // Claves para lector de huellas
   static const String _fingerprintDeviceKey = 'fingerprint_device';
+  static const String _autoListeningEnabledKey = 'auto_listening_enabled';
 
   // Guardar la impresora seleccionada
   static Future<void> saveSelectedPrinter(BluetoothPrinter? printer) async {
@@ -385,5 +386,17 @@ class ConfigService {
   static Future<void> removeFingerprintDevice() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_fingerprintDeviceKey);
+  }
+
+  // Guardar configuración de escucha automática
+  static Future<void> saveAutoListeningEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoListeningEnabledKey, enabled);
+  }
+
+  // Cargar configuración de escucha automática
+  static Future<bool> loadAutoListeningEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_autoListeningEnabledKey) ?? false;
   }
 }
