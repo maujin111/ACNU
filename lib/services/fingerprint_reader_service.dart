@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http; // Import for http
 import 'package:anfibius_uwu/services/auth_service.dart';
 import '../services/config_service.dart';
 import '../services/hikvision_sdk.dart' show HikvisionSDK, HikvisionConstants;
+import '../services/tts_service.dart';
 
 // Clase simple para representar un dispositivo
 class FingerprintDevice {
@@ -77,6 +78,9 @@ class FingerprintReaderService extends ChangeNotifier {
   // Control de escucha automática
   bool _autoListeningEnabled = false;
   bool _isAutoListening = false;
+
+  // Servicio de Text-to-Speech
+  final TTSService _ttsService = TTSService();
 
   // Método para actualizar el AuthService
   void updateAuthService(AuthService newAuthService) {
@@ -321,6 +325,10 @@ class FingerprintReaderService extends ChangeNotifier {
 
       if (empleadoEncontrado == null) {
         developer.log('❌ Huella no reconocida');
+
+        // Reproducir mensaje de error
+        await _ttsService.sayFingerprintNotRecognized();
+
         throw Exception('Huella no reconocida en el sistema');
       }
 
@@ -340,22 +348,38 @@ class FingerprintReaderService extends ChangeNotifier {
         final responseData = json.decode(marcacionResponse.body);
         final data = responseData['data'];
 
+        // Extraer información
+        final nombres = data['empleado']['nombres'];
+        final apellidos = data['empleado']['apellidos'];
+        final tipo = data['tipo'];
+        final multado = data['multado'] ?? false;
+
         // Log detallado de la respuesta
         developer.log('✅ [TIMBRAJE] Marcación exitosa:');
         developer.log('   - Hora: ${data['hora']}');
-        developer.log(
-          '   - Nombre: ${data['empleado']['nombres']} ${data['empleado']['apellidos']}',
-        );
+        developer.log('   - Nombre: $nombres $apellidos');
         developer.log('   - Fecha: ${data['fecha']}');
-        developer.log('   - Tipo: ${data['tipo']}');
-        developer.log('   - Multado: ${data['multado']}');
+        developer.log('   - Tipo: $tipo');
+        developer.log('   - Multado: $multado');
+
+        // Reproducir mensaje de bienvenida según el tipo de marcación
+        if (tipo == 'ENTRADA' || tipo == 'entrada') {
+          await _ttsService.sayEntrance(nombres, apellidos, multado: multado);
+        } else if (tipo == 'SALIDA' || tipo == 'salida') {
+          await _ttsService.sayExit(nombres, apellidos);
+        } else {
+          // Por defecto, usar mensaje genérico de bienvenida
+          await _ttsService.sayWelcome(nombres, apellidos, multado: multado);
+        }
 
         return {
           'id_empleado': data['empleado']['id'],
-          'nombres': data['empleado']['nombres'],
-          'apellidos': data['empleado']['apellidos'],
+          'nombres': nombres,
+          'apellidos': apellidos,
           'fecha_marcacion': data['fecha'],
-          'estado': data['multado'] ? 'Multado' : 'Normal',
+          'tipo_marcacion': tipo,
+          'multado': multado,
+          'estado': multado ? 'Multado' : 'Normal',
         };
       } else {
         developer.log(
@@ -367,6 +391,10 @@ class FingerprintReaderService extends ChangeNotifier {
       }
     } catch (e) {
       developer.log('❌ Error al marcar asistencia: $e');
+
+      // Reproducir mensaje de error
+      await _ttsService.sayError("Error al registrar su marcación");
+
       rethrow;
     }
   }
@@ -561,6 +589,12 @@ class FingerprintReaderService extends ChangeNotifier {
 
       // Cargar configuración de escucha automática
       await loadAutoListeningConfig();
+
+      // Inicializar Text-to-Speech
+      await _ttsService.initialize();
+
+      // Cargar configuración de TTS
+      await _loadTTSConfig();
 
       // Iniciar verificación periódica del estado
       _initConnectionChecker();
@@ -1287,9 +1321,15 @@ class FingerprintReaderService extends ChangeNotifier {
         }
       } else {
         developer.log('❌ Error capturando template');
+        await _ttsService.sayError("No se pudo capturar la huella");
       }
     } catch (e) {
       developer.log('❌ Error en marcación automática: $e');
+
+      // Solo reproducir error si no fue ya reproducido en markAttendanceWithFingerprint
+      if (!e.toString().contains('Huella no reconocida')) {
+        await _ttsService.sayError("Error al procesar la marcación");
+      }
     } finally {
       // Esperar 3 segundos antes de permitir otra captura
       await Future.delayed(Duration(seconds: 3));
@@ -1327,5 +1367,21 @@ class FingerprintReaderService extends ChangeNotifier {
     }
 
     notifyListeners();
+  }
+
+  // Cargar configuración de TTS
+  Future<void> _loadTTSConfig() async {
+    final ttsEnabled = await ConfigService.loadTTSEnabled();
+    _ttsService.setEnabled(ttsEnabled);
+    developer.log(
+      '📂 Configuración TTS cargada: ${ttsEnabled ? "HABILITADO" : "DESHABILITADO"}',
+    );
+  }
+
+  // Habilitar/deshabilitar TTS
+  Future<void> setTTSEnabled(bool enabled) async {
+    _ttsService.setEnabled(enabled);
+    await ConfigService.saveTTSEnabled(enabled);
+    developer.log('🔊 TTS ${enabled ? "HABILITADO" : "DESHABILITADO"}');
   }
 }

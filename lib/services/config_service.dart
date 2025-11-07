@@ -64,6 +64,7 @@ class ConfigService {
   // Claves para lector de huellas
   static const String _fingerprintDeviceKey = 'fingerprint_device';
   static const String _autoListeningEnabledKey = 'auto_listening_enabled';
+  static const String _ttsEnabledKey = 'tts_enabled';
 
   // Guardar la impresora seleccionada
   static Future<void> saveSelectedPrinter(BluetoothPrinter? printer) async {
@@ -398,5 +399,17 @@ class ConfigService {
   static Future<bool> loadAutoListeningEnabled() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_autoListeningEnabledKey) ?? false;
+  }
+
+  // Guardar configuración de TTS (Text-to-Speech)
+  static Future<void> saveTTSEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_ttsEnabledKey, enabled);
+  }
+
+  // Cargar configuración de TTS (Text-to-Speech)
+  static Future<bool> loadTTSEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_ttsEnabledKey) ?? true; // Por defecto habilitado
   }
 }

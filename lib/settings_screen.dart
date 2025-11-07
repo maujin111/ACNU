@@ -205,6 +205,41 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
                     );
                   },
                 ),
+                Consumer<FingerprintReaderService>(
+                  builder: (context, fingerprintService, _) {
+                    return FutureBuilder<bool>(
+                      future: ConfigService.loadTTSEnabled(),
+                      initialData: true,
+                      builder: (context, snapshot) {
+                        final ttsEnabled = snapshot.data ?? true;
+                        return ListTile(
+                          title: const Text('Mensajes de voz'),
+                          subtitle: const Text(
+                            'Reproducir mensaje de bienvenida al marcar asistencia',
+                          ),
+                          trailing: Switch(
+                            value: ttsEnabled,
+                            onChanged: (value) async {
+                              await fingerprintService.setTTSEnabled(value);
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      value
+                                          ? '🔊 Mensajes de voz habilitados'
+                                          : '🔇 Mensajes de voz deshabilitados',
+                                    ),
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            },
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
                 const Divider(),
                 Align(
                   alignment: Alignment.centerLeft,
