@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:anfibius_uwu/main.dart';
 import 'package:window_manager/window_manager.dart';
+import 'dart:io' show Platform;
+import 'package:permission_handler/permission_handler.dart';
 
 class GeneralSettingsScreen extends StatefulWidget {
   const GeneralSettingsScreen({super.key});
@@ -109,54 +111,107 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
                     ),
                   ),
                 ),
-                ListTile(
-                  title: const Text('Iniciar con Windows'),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'La aplicación se iniciará automáticamente al arrancar el sistema',
-                      ),
-                      if (startupService.lastError != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4.0),
-                          child: Text(
-                            'Error: ${startupService.lastError}',
-                            style: const TextStyle(
-                              color: Colors.red,
-                              fontSize: 12,
+                // Mostrar configuración de Windows solo en escritorio
+                if (Platform.isWindows || Platform.isMacOS || Platform.isLinux)
+                  ListTile(
+                    title: const Text('Iniciar con Windows'),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'La aplicación se iniciará automáticamente al arrancar el sistema',
+                        ),
+                        if (startupService.lastError != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4.0),
+                            child: Text(
+                              'Error: ${startupService.lastError}',
+                              style: const TextStyle(
+                                color: Colors.red,
+                                fontSize: 12,
+                              ),
                             ),
                           ),
-                        ),
-                    ],
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (startupService.isInitialized)
-                        Switch(
-                          value: startupService.isEnabled,
-                          onChanged: (value) async {
-                            await startupService.toggleStartupSetting();
+                      ],
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (startupService.isInitialized)
+                          Switch(
+                            value: startupService.isEnabled,
+                            onChanged: (value) async {
+                              await startupService.toggleStartupSetting();
+                            },
+                          )
+                        else
+                          const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: const Icon(Icons.refresh, size: 20),
+                          onPressed: () async {
+                            await startupService.checkCurrentState();
                           },
-                        )
-                      else
-                        const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          tooltip: 'Verificar estado actual',
                         ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        icon: const Icon(Icons.refresh, size: 20),
-                        onPressed: () async {
-                          await startupService.checkCurrentState();
-                        },
-                        tooltip: 'Verificar estado actual',
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
+                // Mostrar configuración de Android solo en Android
+                if (Platform.isAndroid)
+                  ListTile(
+                    title: const Text('Desactivar optimización de batería'),
+                    subtitle: const Text(
+                      'Permite que la app mantenga la conexión activa en segundo plano',
+                    ),
+                    trailing: ElevatedButton.icon(
+                      icon: const Icon(Icons.battery_charging_full, size: 18),
+                      label: const Text('Configurar'),
+                      onPressed: () async {
+                        try {
+                          final status =
+                              await Permission.ignoreBatteryOptimizations
+                                  .request();
+
+                          if (!context.mounted) return;
+
+                          if (status.isGranted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  '✅ Optimización de batería desactivada',
+                                ),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  '⚠️ Es necesario desactivar la optimización de batería para mantener la conexión activa',
+                                ),
+                                backgroundColor: Colors.orange,
+                                duration: Duration(seconds: 4),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (!context.mounted) return;
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('❌ Error: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
                 const Divider(),
                 Align(
                   alignment: Alignment.centerLeft,

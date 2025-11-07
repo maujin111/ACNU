@@ -29,6 +29,10 @@ import 'package:launch_at_startup/launch_at_startup.dart'
 import 'package:desktop_multi_window/desktop_multi_window.dart'
     if (dart.library.html) 'package:anfibius_uwu/platform_stubs.dart';
 
+// Importar servicio de primer plano para Android
+import 'package:anfibius_uwu/services/foreground_service.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+
 void main(List<String> args) async {
   // Capturar errores no manejados
   FlutterError.onError = (FlutterErrorDetails details) {
@@ -37,6 +41,12 @@ void main(List<String> args) async {
   };
 
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Inicializar servicio de primer plano en Android
+  if (Platform.isAndroid) {
+    PrinterForegroundService.initForegroundTask();
+    print('✅ Servicio de primer plano inicializado para Android');
+  }
 
   // Solo ejecutar funcionalidades de escritorio en plataformas compatibles
   if (_isDesktop()) {
@@ -139,6 +149,32 @@ class MyApp extends StatelessWidget {
       ],
       child: Consumer<ThemeService>(
         builder: (context, themeService, child) {
+          // Envolver con WithForegroundTask solo en Android
+          if (Platform.isAndroid) {
+            return WithForegroundTask(
+              child: MaterialApp(
+                debugShowCheckedModeBanner: false,
+                title: 'Anfibius Connect Nexus Utility',
+                theme: ThemeData(
+                  colorScheme: ColorScheme.fromSeed(
+                    seedColor: Colors.lightGreen,
+                  ),
+                  useMaterial3: true,
+                ),
+                darkTheme: ThemeData(
+                  colorScheme: ColorScheme.fromSeed(
+                    seedColor: Colors.lightGreen,
+                    brightness: Brightness.dark,
+                  ),
+                  useMaterial3: true,
+                ),
+                themeMode: themeService.themeMode,
+                home: const MyHomePage(title: 'Anfibius Connect Nexus Utility'),
+              ),
+            );
+          }
+
+          // Para otras plataformas, usar MaterialApp directamente
           return MaterialApp(
             debugShowCheckedModeBanner: false,
             title: 'Anfibius Connect Nexus Utility',
@@ -201,13 +237,16 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage>
-    with TrayListener, WindowListener {
+    with TrayListener, WindowListener, WidgetsBindingObserver {
   WindowController? window;
   final Map<int, WindowController> _childWindows = {};
 
   @override
   void initState() {
     super.initState();
+
+    // Agregar observer del ciclo de vida de la app
+    WidgetsBinding.instance.addObserver(this);
 
     // Solo configurar listeners de escritorio si estamos en una plataforma compatible
     if (_isDesktop()) {
@@ -218,10 +257,109 @@ class _MyHomePageState extends State<MyHomePage>
       DesktopMultiWindow.setMethodHandler(_handleMethodCallback);
     }
 
+    // Iniciar servicio de primer plano en Android
+    if (Platform.isAndroid) {
+      _startForegroundService();
+    }
+
     // Configurar la impresión automática cuando llegan mensajes por WebSocket
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _setupAutoPrint();
     });
+  }
+
+  Future<void> _startForegroundService() async {
+    try {
+      // Iniciar el servicio de primer plano
+      final result = await PrinterForegroundService.startService();
+
+      print('✅ Servicio de primer plano iniciado: $result');
+
+      // Configurar callback para recibir datos del servicio
+      FlutterForegroundTask.addTaskDataCallback(_onReceiveTaskData);
+    } catch (e) {
+      print('❌ Error al iniciar servicio de primer plano: $e');
+    }
+  }
+
+  void _onReceiveTaskData(Object data) {
+    if (data is Map) {
+      print('📨 Datos recibidos del servicio de primer plano: $data');
+
+      final type = data['type'];
+
+      if (type == 'heartbeat') {
+        // El servicio sigue activo, actualizar UI si es necesario
+        print('💓 Heartbeat del servicio - Todo funcionando correctamente');
+      } else if (type == 'check_websocket') {
+        // Verificar que el WebSocket sigue conectado
+        final webSocketService = Provider.of<WebSocketService>(
+          context,
+          listen: false,
+        );
+
+        if (!webSocketService.isConnected) {
+          print(
+            '⚠️ WebSocket desconectado detectado por el servicio, reconectando...',
+          );
+          webSocketService.onAppResumed();
+        } else {
+          print(
+            '✅ WebSocket confirmado como activo por verificación del servicio',
+          );
+        }
+      }
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    final webSocketService = Provider.of<WebSocketService>(
+      context,
+      listen: false,
+    );
+
+    switch (state) {
+      case AppLifecycleState.paused:
+        // App va a segundo plano
+        print('📱 App pausada (segundo plano)');
+        webSocketService.onAppPaused();
+
+        if (Platform.isAndroid) {
+          PrinterForegroundService.updateNotification(
+            title: 'Servicio en segundo plano',
+            text: 'Escuchando órdenes de impresión...',
+          );
+        }
+        break;
+
+      case AppLifecycleState.resumed:
+        // App vuelve a primer plano
+        print('📱 App reanudada (primer plano)');
+        webSocketService.onAppResumed();
+
+        if (Platform.isAndroid) {
+          PrinterForegroundService.updateNotification(
+            title: 'Servicio de Impresión Activo',
+            text: 'App en primer plano',
+          );
+        }
+        break;
+
+      case AppLifecycleState.inactive:
+        print('📱 App inactiva');
+        break;
+
+      case AppLifecycleState.detached:
+        print('📱 App desconectada');
+        break;
+
+      case AppLifecycleState.hidden:
+        print('📱 App oculta');
+        break;
+    }
   }
 
   void _setupAutoPrint() {
@@ -398,6 +536,14 @@ class _MyHomePageState extends State<MyHomePage>
 
   @override
   void dispose() {
+    // Remover observer del ciclo de vida
+    WidgetsBinding.instance.removeObserver(this);
+
+    // Remover callback del servicio de primer plano
+    if (Platform.isAndroid) {
+      FlutterForegroundTask.removeTaskDataCallback(_onReceiveTaskData);
+    }
+
     if (_isDesktop()) {
       // Cerrar todas las ventanas secundarias al cerrar la ventana principal
       for (final window in _childWindows.values) {

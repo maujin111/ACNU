@@ -44,6 +44,11 @@ dependencies:
   package_info_plus: ^8.3.0
   carousel_slider: ^5.0.0
   
+  # Dependencias para mantener el servicio activo en Android
+  flutter_foreground_task: ^8.0.0
+  wakelock_plus: ^1.2.0
+  permission_handler: ^11.3.1
+  
   # Dependencias específicas de escritorio (condicionales)
   
   

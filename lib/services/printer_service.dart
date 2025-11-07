@@ -967,24 +967,133 @@ class PrinterService extends ChangeNotifier {
       return false;
     }
 
-    if (!isPrinterConnected(printerName)) {
-      print('❌ Impresora no conectada: $printerName');
-      return false;
+    print('🖨️ Imprimiendo en: $printerName (${printer.typePrinter})');
+    print('📋 Parámetros de impresora:');
+    print('   - Nombre: ${printer.deviceName}');
+    print('   - Tipo: ${printer.typePrinter}');
+    if (printer.typePrinter == PrinterType.usb) {
+      print('   - VendorID: ${printer.vendorId}');
+      print('   - ProductID: ${printer.productId}');
+    } else if (printer.typePrinter == PrinterType.bluetooth) {
+      print('   - Address: ${printer.address}');
+      print('   - BLE: ${printer.isBle}');
+    } else if (printer.typePrinter == PrinterType.network) {
+      print('   - IP: ${printer.address}');
+      print('   - Port: ${printer.port}');
     }
 
-    print('🖨️ Imprimiendo en: $printerName (${printer.typePrinter})');
-
     try {
+      // CRÍTICO: Desconectar primero para limpiar la conexión anterior
+      print(
+        '🔌 Desconectando cualquier conexión previa del tipo ${printer.typePrinter}...',
+      );
+      try {
+        await printerManager.disconnect(type: printer.typePrinter);
+        // Dar tiempo para que se complete la desconexión
+        await Future.delayed(const Duration(milliseconds: 300));
+      } catch (e) {
+        print('⚠️ No había conexión previa o error al desconectar: $e');
+      }
+
+      // IMPORTANTE: Reconectar a la impresora específica antes de imprimir
+      // Esto asegura que los bytes se envíen a la impresora correcta
+      bool connected = false;
+
+      switch (printer.typePrinter) {
+        case PrinterType.usb:
+          try {
+            print('🔌 Conectando a impresora USB específica: $printerName');
+            print(
+              '   → VendorID: ${printer.vendorId}, ProductID: ${printer.productId}',
+            );
+            await printerManager.connect(
+              type: printer.typePrinter,
+              model: UsbPrinterInput(
+                name: printer.deviceName,
+                productId: printer.productId,
+                vendorId: printer.vendorId,
+              ),
+            );
+            connected = true;
+            print('✅ Conectado a impresora USB: $printerName');
+          } catch (e) {
+            print('⚠️ Error al conectar impresora USB $printerName: $e');
+            // Intentar imprimir de todos modos
+            connected = true;
+          }
+          break;
+
+        case PrinterType.bluetooth:
+          try {
+            print(
+              '🔌 Conectando a impresora Bluetooth específica: $printerName',
+            );
+            print('   → Address: ${printer.address}');
+            await printerManager.connect(
+              type: printer.typePrinter,
+              model: BluetoothPrinterInput(
+                name: printer.deviceName,
+                address: printer.address!,
+                isBle: printer.isBle ?? false,
+                autoConnect: _reconnect,
+              ),
+            );
+            connected = true;
+            print('✅ Conectado a impresora Bluetooth: $printerName');
+          } catch (e) {
+            print('⚠️ Error al conectar impresora Bluetooth $printerName: $e');
+            connected = false;
+          }
+          break;
+
+        case PrinterType.network:
+          try {
+            print('🔌 Conectando a impresora de red específica: $printerName');
+            print('   → IP: ${printer.address}:${printer.port ?? "9100"}');
+            await printerManager.connect(
+              type: printer.typePrinter,
+              model: TcpPrinterInput(
+                ipAddress: printer.address!,
+                port: int.tryParse(printer.port ?? '9100') ?? 9100,
+              ),
+            );
+            connected = true;
+            print('✅ Conectado a impresora de red: $printerName');
+          } catch (e) {
+            print('⚠️ Error al conectar impresora de red $printerName: $e');
+            connected = false;
+          }
+          break;
+      }
+
+      if (!connected) {
+        print('❌ No se pudo conectar a la impresora: $printerName');
+        _connectionStatus[printerName] = false;
+        notifyListeners();
+        return false;
+      }
+
+      // Dar tiempo para que se estabilice la conexión
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      // Enviar los bytes a la impresora
+      print('📤 Enviando ${bytes.length} bytes a $printerName...');
       await printerManager.send(type: printer.typePrinter, bytes: bytes);
       print('✅ Impresión enviada exitosamente a: $printerName');
+
+      // Actualizar estado de conexión
+      _connectionStatus[printerName] = true;
+      notifyListeners();
+
       return true;
     } catch (e) {
       print('❌ Error al imprimir en $printerName: $e');
+      _connectionStatus[printerName] = false;
+      notifyListeners();
       return false;
     }
-  }
+  } // NUEVO: Generar bytes de impresión usando el tamaño de papel específico de la impresora
 
-  // NUEVO: Generar bytes de impresión usando el tamaño de papel específico de la impresora
   Future<List<int>> generatePrintBytesForPrinter(
     String printerName,
     String content, {

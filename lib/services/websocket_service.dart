@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:flutter/foundation.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import '../models/print_history_item.dart';
 import '../services/config_service.dart';
 
@@ -34,6 +35,9 @@ class WebSocketService extends ChangeNotifier {
 
   // Flag para controlar si debe reconectar automáticamente
   bool _shouldAutoReconnect = true;
+
+  // Flag para saber si la app está en segundo plano
+  bool _isInBackground = false;
 
   WebSocketService() {
     // Comenzar inicialización en la construcción del servicio
@@ -224,6 +228,16 @@ class WebSocketService extends ChangeNotifier {
   Future<void> _connect() async {
     if (_token == null || _token!.isEmpty) return;
 
+    // Activar wake lock en Android para mantener la conexión activa
+    if (Platform.isAndroid) {
+      try {
+        await WakelockPlus.enable();
+        print('✅ Wake lock activado');
+      } catch (e) {
+        print('❌ Error activando wake lock: $e');
+      }
+    }
+
     // Lista de URLs para probar en orden de preferencia
     final urlsToTry = [
       'wss://soporte.anfibius.net:3300/$_token', // HTTPS con puerto 3300
@@ -384,13 +398,24 @@ class WebSocketService extends ChangeNotifier {
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
 
-    // Enviar ping cada 15 segundos para mantener la conexión viva
-    _heartbeatTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+    // Enviar ping cada 30 segundos para mantener la conexión viva en Android
+    // Esto evita que el sistema mate la conexión por inactividad
+    final heartbeatInterval =
+        Platform.isAndroid
+            ? const Duration(seconds: 30)
+            : const Duration(seconds: 15);
+
+    _heartbeatTimer = Timer.periodic(heartbeatInterval, (timer) {
       if (_isConnected && _channel != null) {
         try {
-          // Enviar un ping simple
-          _channel!.sink.add('ping');
-          print('📡 Heartbeat enviado');
+          // Enviar un ping simple para mantener la conexión viva
+          _channel!.sink.add(
+            json.encode({
+              'type': 'ping',
+              'timestamp': DateTime.now().millisecondsSinceEpoch,
+            }),
+          );
+          print('📡 Keep-alive ping enviado');
         } catch (e) {
           print('❌ Error al enviar heartbeat: $e');
           // Si falla el heartbeat, considerar la conexión como muerta
@@ -553,8 +578,40 @@ class WebSocketService extends ChangeNotifier {
     _shouldAutoReconnect = false; // Deshabilitar reconexión al hacer dispose
     _reconnectTimer?.cancel();
     _heartbeatTimer?.cancel();
+
+    // Deshabilitar wake lock al hacer dispose
+    if (Platform.isAndroid) {
+      WakelockPlus.disable();
+    }
+
     disconnect();
     super.dispose();
+  }
+
+  /// Método para notificar que la app va a segundo plano
+  void onAppPaused() {
+    _isInBackground = true;
+    print('⏸️ App en segundo plano - manteniendo conexión WebSocket activa');
+    // NO desconectar, solo marcar el estado
+    // El servicio de primer plano mantendrá la conexión activa
+  }
+
+  /// Método para notificar que la app vuelve a primer plano
+  void onAppResumed() {
+    _isInBackground = false;
+    print('▶️ App en primer plano - verificando conexión WebSocket');
+
+    // Verificar si la conexión sigue activa
+    if (!_isConnected && _token != null && _token!.isNotEmpty) {
+      print(
+        '⚠️ Conexión perdida mientras estaba en segundo plano, reconectando...',
+      );
+      _shouldAutoReconnect = true;
+      _reconnectAttempts = 0;
+      _connect();
+    } else if (_isConnected) {
+      print('✅ Conexión WebSocket sigue activa');
+    }
   }
 
   /// Limpia el historial de mensajes tanto en memoria como en almacenamiento persistente

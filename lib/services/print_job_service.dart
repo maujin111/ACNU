@@ -199,10 +199,16 @@ class PrintJobService {
           data = {};
         }
 
+        // Buscar en múltiples campos posibles para el nombre de la impresora
         targetPrinterName =
             data['printer']?.toString() ??
             data['impresora']?.toString() ??
-            data['printerName']?.toString();
+            data['printerName']?.toString() ??
+            data['printer_name']?.toString() ??
+            data['nombreImpresora']?.toString();
+
+        print('📋 Campos disponibles en JSON: ${data.keys.join(", ")}');
+        print('🔍 Impresora extraída del JSON: $targetPrinterName');
       } catch (e) {
         print('⚠️ Error al extraer nombre de impresora del JSON: $e');
       }
@@ -211,11 +217,32 @@ class PrintJobService {
       if (targetPrinterName == null || targetPrinterName.isEmpty) {
         targetPrinterName =
             request.printerName.isNotEmpty ? request.printerName : null;
+        print('🔍 Impresora desde request.printerName: $targetPrinterName');
       }
 
       // Si se especifica una impresora, verificar que esté conectada
-      if (targetPrinterName != null) {
-        if (!printerService.isPrinterConnected(targetPrinterName)) {
+      if (targetPrinterName != null && targetPrinterName.isNotEmpty) {
+        print('🔎 Buscando impresora: "$targetPrinterName"');
+        print(
+          '📊 Impresoras conectadas disponibles: ${printerService.connectedPrinterNames.join(", ")}',
+        );
+
+        // Verificar si la impresora está conectada (comparación case-insensitive)
+        bool isConnected = false;
+        String? exactPrinterName;
+
+        for (var printerName in printerService.connectedPrinterNames) {
+          if (printerName.toLowerCase() == targetPrinterName.toLowerCase()) {
+            isConnected = true;
+            exactPrinterName = printerName;
+            break;
+          }
+        }
+
+        if (!isConnected) {
+          print(
+            '⚠️ Impresora "$targetPrinterName" no encontrada por nombre exacto, buscando parcialmente...',
+          );
           // Intentar buscar por nombre parcial
           final foundPrinter = printerService.findPrinterByName(
             targetPrinterName,
@@ -224,21 +251,49 @@ class PrintJobService {
             print(
               '❌ Impresora "$targetPrinterName" no está conectada o no existe',
             );
+            print(
+              '💡 Sugerencia: Verifica que el nombre en el mensaje JSON coincida exactamente con el nombre de la impresora configurada',
+            );
             return false;
           } else {
             // Usar el nombre exacto encontrado
-            targetPrinterName = foundPrinter.deviceName;
+            exactPrinterName = foundPrinter.deviceName;
+            print(
+              '✅ Impresora encontrada por coincidencia parcial: $exactPrinterName',
+            );
           }
         }
+
+        targetPrinterName = exactPrinterName;
         print('🎯 Imprimiendo en impresora específica: $targetPrinterName');
       } else {
-        // Si no se especifica impresora, usar la principal (retrocompatibilidad)
-        if (printerService.currentPrinter == null) {
-          print('❌ No hay impresora conectada para procesar la solicitud');
+        // Si no se especifica impresora, verificar si hay alguna conectada
+        print('⚠️ No se especificó impresora en el mensaje');
+        print(
+          '📊 Impresoras disponibles: ${printerService.connectedPrinterNames.join(", ")}',
+        );
+
+        // Si hay exactamente una impresora conectada, usarla
+        if (printerService.connectedPrinterNames.length == 1) {
+          targetPrinterName = printerService.connectedPrinterNames.first;
+          print(
+            '🔄 Auto-seleccionando única impresora conectada: $targetPrinterName',
+          );
+        } else if (printerService.connectedPrinterNames.length > 1) {
+          print(
+            '❌ Hay múltiples impresoras conectadas. Debes especificar cuál usar en el mensaje JSON',
+          );
+          print(
+            '� Agrega el campo "printer" o "impresora" con el nombre exacto de la impresora',
+          );
+          print(
+            '📋 Impresoras disponibles: ${printerService.connectedPrinterNames.join(", ")}',
+          );
+          return false;
+        } else {
+          print('❌ No hay impresoras conectadas');
           return false;
         }
-        targetPrinterName = printerService.currentPrinter?.deviceName;
-        print('🖨️ Usando impresora principal: $targetPrinterName');
       }
 
       // Validar que el tipo de solicitud sea permitido

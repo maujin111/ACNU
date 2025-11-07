@@ -1,55 +1,190 @@
 # Soporte para Múltiples Impresoras
 
-## Descripción
-La aplicación ahora soporta conectar y gestionar múltiples impresoras simultáneamente. Cada petición de impresión puede especificar el nombre de la impresora donde desea imprimir.
+## Problema Resuelto
 
-## Características Nuevas
+✅ **CORREGIDO v2**: 
+1. **Windows enviaba todo a la misma impresora**: Ahora el sistema reconecta a cada impresora específica antes de imprimir, asegurando que los bytes se envíen a la impresora correcta.
+2. **Mensajes de error del sistema**: Se eliminaron los mensajes de error cuando una impresora no está conectada. El sistema ahora maneja los errores silenciosamente y continúa funcionando.
+
+## Cómo Funciona la Corrección
+
+### Problema Anterior (Windows)
+- Windows permite múltiples impresoras USB conectadas
+- El `PrinterManager` solo distinguía por tipo (USB/Bluetooth/Red)
+- **Resultado**: Todos los bytes USB se enviaban a la última impresora USB conectada
+
+### Solución Implementada
+- **Reconexión activa**: Antes de cada impresión, el sistema se conecta específicamente a la impresora objetivo usando sus parámetros únicos:
+  - USB: `vendorId` + `productId` + `deviceName`
+  - Bluetooth: `address` + `deviceName`
+  - Red: `ipAddress` + `port`
+- **Manejo silencioso de errores**: Si una impresora no está conectada, el sistema registra el error en logs pero no muestra mensajes de error del sistema
+- **Estado actualizado**: El estado de conexión de cada impresora se actualiza automáticamente
+
+## Características
 
 ### 1. Gestión de Múltiples Impresoras
 - **Conectar múltiples impresoras**: Puedes tener varias impresoras conectadas al mismo tiempo
-- **Lista de impresoras**: Ver todas las impresoras conectadas y su estado
-- **Agregar impresoras**: Buscar y agregar nuevas impresoras a la lista
-- **Remover impresoras**: Eliminar impresoras de la lista de conectadas
-- **Estado individual**: Cada impresora tiene su propio estado de conexión
+- **Identificación por nombre**: Cada impresora se identifica por su nombre único
+- **Tamaño de papel individual**: Cada impresora tiene su configuración de tamaño (58mm, 72mm, 80mm)
+- **Estado independiente**: Cada impresora mantiene su propio estado de conexión
+- **Impresión dirigida**: Las peticiones especifican exactamente a qué impresora enviar
 
-### 2. Selección Automática de Impresora
-- **Por nombre**: Las peticiones pueden especificar `printerName` en el JSON
-- **Retrocompatibilidad**: Si no se especifica nombre, usa la impresora principal
-- **Verificación**: Solo imprime si la impresora especificada está conectada
+### 2. Selección de Impresora
 
-### 3. Interfaz de Usuario Mejorada
-- **Sección "Impresoras Conectadas"**: Nueva sección en la configuración
-- **Botón "Agregar"**: Para buscar y agregar nuevas impresoras
-- **Estado visual**: Indicadores de conexión para cada impresora
-- **Acciones**: Conectar/desconectar y eliminar impresoras individualmente
+#### **IMPORTANTE**: Especificar Impresora en el JSON
+
+El mensaje JSON **debe incluir** el campo que identifica la impresora. Campos soportados:
+- `"printer"` ⭐ (recomendado)
+- `"impresora"`
+- `"printerName"`
+- `"printer_name"`
+- `"nombreImpresora"`
+
+#### Comportamiento del Sistema:
+
+**✅ Caso 1: Impresora especificada**
+```json
+{
+  "tipo": "COMANDA",
+  "printer": "cocina",
+  "data": {...}
+}
+```
+→ Imprime en la impresora "cocina"
+
+**✅ Caso 2: Una sola impresora conectada (sin especificar)**
+```json
+{
+  "tipo": "COMANDA",
+  "data": {...}
+}
+```
+→ Auto-selecciona la única impresora disponible
+
+**❌ Caso 3: Múltiples impresoras sin especificar**
+```json
+{
+  "tipo": "COMANDA",
+  "data": {...}
+}
+```
+→ **ERROR**: "Hay múltiples impresoras conectadas. Debes especificar cuál usar"
 
 ## Uso
 
-### Para Desarrolladores
+### Formato del JSON con Impresora Específica:
 
-#### Estructura del JSON con impresora específica:
 ```json
 {
-  "tipo": "VENTA",
-  "id": "12345",
-  "printerName": "EPSON TM-T88V",
+  "tipo": "COMANDA",
+  "printer": "cocina",
+  "id": "CMD-001",
   "copias": "1",
   "data": {
-    // ... datos de la impresión
+    "hameName": "Mesa 5",
+    "pisoName": "Primer Piso",
+    "detalles": [
+      {
+        "cant": 2,
+        "descripcion": "Hamburguesa Especial",
+        "observacion": "Sin cebolla"
+      }
+    ]
   }
 }
 ```
 
-#### Si no se especifica impresora:
-```json
+### Ejemplos Prácticos
+
+**Restaurante con 3 Impresoras:**
+
+```javascript
+// Comanda para cocina
 {
-  "tipo": "VENTA", 
-  "id": "12345",
-  "copias": "1",
-  "data": {
-    // ... datos de la impresión
-  }
+  "tipo": "COMANDA",
+  "printer": "cocina",  // ← Impresora USB 80mm
+  "data": {...}
 }
+
+// Comanda para bar  
+{
+  "tipo": "COMANDA",
+  "printer": "bar",     // ← Impresora Bluetooth 58mm
+  "data": {...}
+}
+
+// Factura en caja
+{
+  "tipo": "VENTA",
+  "printer": "caja",    // ← Impresora de Red 80mm
+  "data": {...}
+}
+```
+
+## Flujo de Impresión (Técnico)
+
+### 1. Recepción del Mensaje
+```
+Mensaje JSON → PrintJobService.processPrintRequest()
+```
+
+### 2. Identificación de la Impresora
+```
+Extrae campo "printer" del JSON → Busca en _connectedPrinters
+```
+
+### 3. Reconexión Específica (CRÍTICO para Windows)
+```
+printBytesToPrinter() → printerManager.connect() con parámetros específicos:
+  - USB: vendorId + productId + deviceName
+  - Bluetooth: address + deviceName  
+  - Red: ipAddress + port
+```
+
+### 4. Envío de Bytes
+```
+printerManager.send(type: tipoPrinter, bytes: bytes)
+```
+
+### 5. Actualización de Estado
+```
+_connectionStatus[printerName] = true/false
+notifyListeners()
+```
+
+## Logs del Sistema
+
+### Impresión Exitosa
+```
+🔍 Impresora extraída del JSON: cocina
+🔎 Buscando impresora: "cocina"
+📊 Impresoras conectadas disponibles: cocina, parrilla, bar
+🎯 Imprimiendo en impresora específica: cocina
+📄 Tamaño de papel para cocina: 80mm
+🖨️ Imprimiendo en: cocina (PrinterType.usb)
+🔌 Conectado a impresora USB: cocina
+✅ Impresión enviada exitosamente a: cocina
+```
+
+### Impresora No Conectada (Sin mensaje de error del sistema)
+```
+🔍 Impresora extraída del JSON: parrilla
+🔎 Buscando impresora: "parrilla"
+🖨️ Imprimiendo en: parrilla (PrinterType.usb)
+⚠️ Error al conectar impresora USB parrilla: [error interno]
+❌ No se pudo conectar a la impresora: parrilla
+```
+**Nota**: El error se registra en logs pero NO se muestra mensaje de error al usuario
+
+### Impresora No Existe
+```
+🔍 Impresora extraída del JSON: bodega
+🔎 Buscando impresora: "bodega"
+📊 Impresoras conectadas disponibles: cocina, parrilla, bar
+❌ Impresora "bodega" no está conectada o no existe
+💡 Sugerencia: Verifica que el nombre coincida exactamente
+```
 ```
 En este caso usará la impresora principal (retrocompatibilidad).
 
