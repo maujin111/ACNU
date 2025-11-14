@@ -344,7 +344,7 @@ class PrintJobService {
             );
             return await printVentaDirecto(request, targetPrinterName);
           } else {
-            return await printVenta(request, targetPrinterName);
+            return await printVentaDirecto(request, targetPrinterName);
           }
         case 'TEST':
           print('🧪 Imprimiendo prueba...');
@@ -952,88 +952,30 @@ class PrintJobService {
       bytes += generateLine(generator: generator, paperSize: paperSize);
       bytes += generator.emptyLines(1);
 
-      bytes += generator.row([
-        PosColumn(
-          text: 'SUBTOTAL 0%:',
-          width: 9,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-        PosColumn(
-          text: prefacturaData.sinIva.toStringAsFixed(2),
-          width: 3,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-      ]);
-
-      bytes += generator.row([
-        PosColumn(
-          text: 'SUBTOTAL 15%:',
-          width: 9,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-        PosColumn(
-          text: prefacturaData.conIva.toStringAsFixed(2),
-          width: 3,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-      ]);
-
-      bytes += generator.row([
-        PosColumn(
-          text: 'SUBTOTAL SIN IMPUESTOS:',
-          width: 9,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-        PosColumn(
-          text: (prefacturaData.sinIva + prefacturaData.conIva).toStringAsFixed(
-            2,
-          ),
-          width: 3,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-      ]);
-
-      // Agregar servicio 10% si es mayor que 0
-      if (esValorMayorQueCero(prefacturaData.servicio)) {
-        bytes += generator.row([
-          PosColumn(
-            text: 'SERVICIO 10%:',
-            width: 9,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-          PosColumn(
-            text: formatearValorNumerico(prefacturaData.servicio),
-            width: 3,
-            styles: baseStyle.copyWith(align: PosAlign.left),
-          ),
-        ]);
+      for (var total in prefacturaData.totales!) {
+        // Los totales vienen como Map<String, dynamic>, no como objetos
+        if (total is Map<String, dynamic>) {
+          final descripcion = total['descripcion']?.toString() ?? '';
+          final valorRaw = total['valor'];
+          final valor =
+              valorRaw is num
+                  ? valorRaw.toDouble()
+                  : double.tryParse(valorRaw?.toString() ?? '0') ?? 0.0;
+          if (valor == 0.0) continue; // Omitir totales con valor cero
+          bytes += generator.row([
+            PosColumn(
+              text: descripcion,
+              width: 9,
+              styles: baseStyle.copyWith(align: PosAlign.left),
+            ),
+            PosColumn(
+              text: valor.toStringAsFixed(2),
+              width: 3,
+              styles: baseStyle.copyWith(align: PosAlign.left),
+            ),
+          ]);
+        }
       }
-
-      bytes += generator.row([
-        PosColumn(
-          text: 'IVA 15:',
-          width: 9,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-        PosColumn(
-          text: prefacturaData.iva.toStringAsFixed(2),
-          width: 3,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-      ]);
-
-      bytes += generator.row([
-        PosColumn(
-          text: 'TOTAL:',
-          width: 9,
-          styles: baseStyle.copyWith(align: PosAlign.left, bold: true),
-        ),
-        PosColumn(
-          text: prefacturaData.total.toStringAsFixed(2),
-          width: 3,
-          styles: baseStyle.copyWith(align: PosAlign.left, bold: true),
-        ),
-      ]);
 
       bytes += generator.emptyLines(2);
 

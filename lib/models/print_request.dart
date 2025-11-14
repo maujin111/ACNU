@@ -375,25 +375,41 @@ class PrefacturaData {
   final int numero;
   final String? hameName;
   final String? pisoName;
-  final double sinIva;
-  final double conIva;
-  final double iva;
-  final double servicio;
+  final double base0;
+  final double subtotal15;
+  final double subtotal12;
+  final double subtotal5;
+  final double subtotal8;
+  final double totalDescuento;
+  final double recargo;
+  final double iva15;
+  final double iva12;
+  final double iva5;
+  final double iva8;
   final double total;
   final List<DetallePrefactura> detalles;
   final String? empleado;
+  final List<dynamic>? totales;
 
   PrefacturaData({
     required this.numero,
     this.hameName,
     this.pisoName,
-    required this.sinIva,
-    required this.conIva,
-    required this.iva,
-    required this.servicio,
+    this.base0 = 0.0,
+    this.subtotal15 = 0.0,
+    this.subtotal12 = 0.0,
+    this.subtotal5 = 0.0,
+    this.subtotal8 = 0.0,
+    this.totalDescuento = 0.0,
+    this.recargo = 0.0,
+    this.iva15 = 0.0,
+    this.iva12 = 0.0,
+    this.iva5 = 0.0,
+    this.iva8 = 0.0,
     required this.total,
     required this.detalles,
     this.empleado,
+    this.totales,
   });
   factory PrefacturaData.fromJson(Map<String, dynamic> json) {
     try {
@@ -422,17 +438,61 @@ class PrefacturaData {
       // Nombres de mesa y piso (formato nuevo o antiguo)
       final hameName = json['mesa'] ?? json['hame_nombre'];
       final pisoName = json['piso'].toString();
+      // Valores monetarios
+      final base0 =
+          json['base0'] != null
+              ? double.tryParse(json['base0'].toString()) ?? 0.0
+              : 0.0;
+      final subtotal15 =
+          json['subtotal15'] != null
+              ? double.tryParse(json['subtotal15'].toString()) ?? 0.0
+              : 0.0;
+      final subtotal12 =
+          json['subtotal12'] != null
+              ? double.tryParse(json['subtotal12'].toString()) ?? 0.0
+              : 0.0;
+      final subtotal8 =
+          json['subtotal8'] != null
+              ? double.tryParse(json['subtotal8'].toString()) ?? 0.0
+              : 0.0;
 
-      // Valores con IVA, sin IVA, etc.
-      final sinIva = _parseDoubleFromJson(json, ['subTotal0', 'doin_siniva']);
-      final conIva = _parseDoubleFromJson(json, ['subtotal15', 'doin_coniva']);
-      final iva = _parseDoubleFromJson(json, ['iva15', 'doin_iva']);
-      final servicio = _parseDoubleFromJson(json, [
-        'servicio',
-        'doin_servicio',
-      ]);
-      final total = _parseDoubleFromJson(json, ['total', 'doin_total']);
+      final subtotal5 =
+          json['subtotal5'] != null
+              ? double.tryParse(json['subtotal5'].toString()) ?? 0.0
+              : 0.0;
+      final iva15 =
+          json['iva15'] != null
+              ? double.tryParse(json['iva15'].toString()) ?? 0.0
+              : 0.0;
+      final iva12 =
+          json['iva12'] != null
+              ? double.tryParse(json['iva12'].toString()) ?? 0.0
+              : 0.0;
+      final iva5 =
+          json['iva5'] != null
+              ? double.tryParse(json['iva5'].toString()) ?? 0.0
+              : 0.0;
+      final iva8 =
+          json['iva8'] != null
+              ? double.tryParse(json['iva8'].toString()) ?? 0.0
+              : 0.0;
+
+      final totalDescuento =
+          json['totalDescuento'] != null
+              ? double.tryParse(json['totalDescuento'].toString()) ?? 0.0
+              : 0.0;
+      final recargo =
+          json['recargo'] != null
+              ? double.tryParse(json['recargo'].toString()) ?? 0.0
+              : 0.0;
+
+      final total =
+          json['total'] != null
+              ? double.tryParse(json['total'].toString()) ?? 0.0
+              : 0.0;
       final empleado = json['empleado'] ?? json['empl_nombre'];
+
+      final List<dynamic>? totales = json['totales'];
 
       print(
         'Procesando prefactura: $numero, Mesa: $hameName, Piso: $pisoName, Detalles: ${detallesList.length}',
@@ -442,29 +502,47 @@ class PrefacturaData {
         numero: numero,
         hameName: hameName,
         pisoName: pisoName,
-        sinIva: sinIva,
-        conIva: conIva,
-        iva: iva,
-        servicio: servicio,
+        base0: base0,
+        subtotal15: subtotal15,
+        iva15: iva15,
+        iva5: iva5,
+        iva12: iva12,
+        iva8: iva8,
+        totalDescuento: totalDescuento,
+        recargo: recargo,
+        subtotal12: subtotal12,
+        subtotal5: subtotal5,
+        subtotal8: subtotal8,
         total: total,
         detalles:
             detallesList
                 .map((detalle) => DetallePrefactura.fromJson(detalle))
                 .toList(),
         empleado: empleado,
+        totales: totales,
       );
     } catch (e) {
       print('❌ Error al parsear PrefacturaData: $e');
       // Retornar una prefactura con valores por defecto
       return PrefacturaData(
         numero: 0,
-        sinIva: 0.0,
-        conIva: 0.0,
-        iva: 0.0,
-        servicio: 0.0,
+        hameName: '',
+        pisoName: '',
+        base0: 0.0,
+        subtotal15: 0.0,
+        subtotal12: 0.0,
+        subtotal5: 0.0,
+        subtotal8: 0.0,
+        totalDescuento: 0.0,
+        recargo: 0.0,
+        iva15: 0.0,
+        iva12: 0.0,
+        iva5: 0.0,
+        iva8: 0.0,
         total: 0.0,
         detalles: [],
         empleado: '',
+        totales: [],
       );
     }
   }
