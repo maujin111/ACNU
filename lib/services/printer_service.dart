@@ -1,9 +1,23 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:collection';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_pos_printer_platform_image_3/flutter_pos_printer_platform_image_3.dart';
 import 'package:flutter_esc_pos_utils/flutter_esc_pos_utils.dart';
 import '../services/config_service.dart';
+
+// Clase para representar un trabajo de impresión en cola
+class _PrintJob {
+  final String printerName;
+  final List<int> bytes;
+  final Completer<bool> completer;
+
+  _PrintJob({
+    required this.printerName,
+    required this.bytes,
+    required this.completer,
+  });
+}
 
 class PrinterService extends ChangeNotifier {
   var defaultPrinterType = PrinterType.bluetooth;
@@ -11,6 +25,20 @@ class PrinterService extends ChangeNotifier {
   var _reconnect = false;
   var printerManager = PrinterManager.instance;
   var devices = <BluetoothPrinter>[];
+
+  // Colas de impresión por tipo de impresora
+  final Map<PrinterType, Queue<_PrintJob>> _printQueues = {
+    PrinterType.usb: Queue<_PrintJob>(),
+    PrinterType.bluetooth: Queue<_PrintJob>(),
+    PrinterType.network: Queue<_PrintJob>(),
+  };
+
+  // Flags para saber si hay un trabajo de impresión en progreso por tipo
+  final Map<PrinterType, bool> _isPrinting = {
+    PrinterType.usb: false,
+    PrinterType.bluetooth: false,
+    PrinterType.network: false,
+  };
 
   // Lista de impresoras virtuales a ignorar
   final List<String> _virtualPrintersToIgnore = [
@@ -188,6 +216,55 @@ class PrinterService extends ChangeNotifier {
 
   // Obtener lista de nombres de impresoras conectadas
   List<String> get connectedPrinterNames => _connectedPrinters.keys.toList();
+
+  // GETTERS Y MÉTODOS PARA GESTIÓN DE COLAS
+  // Obtener el tamaño de la cola para un tipo de impresora
+  int getQueueSize(PrinterType type) => _printQueues[type]?.length ?? 0;
+
+  // Verificar si hay trabajos en cola o en progreso para un tipo
+  bool isQueueActive(PrinterType type) =>
+      (_isPrinting[type] ?? false) || getQueueSize(type) > 0;
+
+  // Limpiar la cola de un tipo específico (útil en caso de errores)
+  void clearQueue(PrinterType type) {
+    final queue = _printQueues[type];
+    if (queue != null) {
+      print('🗑️ [COLA] Limpiando cola para ${type}. Trabajos descartados: ${queue.length}');
+      // Completar todos los trabajos pendientes con false
+      while (queue.isNotEmpty) {
+        final job = queue.removeFirst();
+        if (!job.completer.isCompleted) {
+          job.completer.complete(false);
+        }
+      }
+    }
+  }
+
+  // Limpiar todas las colas
+  void clearAllQueues() {
+    print('🗑️ [COLA] Limpiando todas las colas');
+    for (final type in PrinterType.values) {
+      clearQueue(type);
+    }
+  }
+
+  // Obtener información de estado de todas las colas
+  Map<String, dynamic> getQueuesStatus() {
+    return {
+      'usb': {
+        'size': getQueueSize(PrinterType.usb),
+        'printing': _isPrinting[PrinterType.usb] ?? false,
+      },
+      'bluetooth': {
+        'size': getQueueSize(PrinterType.bluetooth),
+        'printing': _isPrinting[PrinterType.bluetooth] ?? false,
+      },
+      'network': {
+        'size': getQueueSize(PrinterType.network),
+        'printing': _isPrinting[PrinterType.network] ?? false,
+      },
+    };
+  }
 
   set isBle(bool value) {
     _isBle = value;
@@ -959,7 +1036,7 @@ class PrinterService extends ChangeNotifier {
     _printRawData(bytes);
   }
 
-  // NUEVO: Imprimir bytes a una impresora específica
+  // NUEVO: Imprimir bytes a una impresora específica con sistema de cola
   Future<bool> printBytesToPrinter(List<int> bytes, String printerName) async {
     final printer = _connectedPrinters[printerName];
     if (printer == null) {
@@ -967,8 +1044,108 @@ class PrinterService extends ChangeNotifier {
       return false;
     }
 
-    print('🖨️ Imprimiendo en: $printerName (${printer.typePrinter})');
-    print('📋 Parámetros de impresora:');
+    final printerType = printer.typePrinter;
+    print(
+      '📥 [COLA] Encolando trabajo de impresión para $printerName (${printerType})',
+    );
+
+    // Crear un completer para esperar el resultado
+    final completer = Completer<bool>();
+
+    // Crear el trabajo de impresión
+    final job = _PrintJob(
+      printerName: printerName,
+      bytes: bytes,
+      completer: completer,
+    );
+
+    // Agregar a la cola correspondiente
+    _printQueues[printerType]!.add(job);
+    print(
+      '📋 [COLA] Trabajo agregado. Tamaño de cola para ${printerType}: ${_printQueues[printerType]!.length}',
+    );
+
+    // Iniciar el procesamiento de la cola si no está en progreso
+    _processQueue(printerType);
+
+    // Esperar el resultado
+    return completer.future;
+  }
+
+  // Procesar la cola de impresión para un tipo específico de impresora
+  Future<void> _processQueue(PrinterType printerType) async {
+    // Si ya hay un trabajo en progreso, no hacer nada
+    if (_isPrinting[printerType] == true) {
+      print('⏳ [COLA] Ya hay un trabajo en progreso para ${printerType}');
+      return;
+    }
+
+    // Obtener la cola
+    final queue = _printQueues[printerType]!;
+
+    // Si la cola está vacía, terminar
+    if (queue.isEmpty) {
+      print('✅ [COLA] Cola vacía para ${printerType}');
+      return;
+    }
+
+    // Marcar que estamos imprimiendo
+    _isPrinting[printerType] = true;
+
+    // Obtener el siguiente trabajo
+    final job = queue.removeFirst();
+    print(
+      '🔄 [COLA] Procesando trabajo para ${job.printerName}. Quedan ${queue.length} trabajos en cola',
+    );
+
+    bool success = false;
+    try {
+      // Ejecutar el trabajo de impresión con timeout de 30 segundos
+      success = await _executePrintJob(job).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          print('⏰ [COLA] Timeout al procesar trabajo para ${job.printerName}');
+          return false;
+        },
+      );
+    } catch (e) {
+      print('❌ [COLA] Error al procesar trabajo para ${job.printerName}: $e');
+      success = false;
+    }
+
+    // Completar el futuro con el resultado
+    if (!job.completer.isCompleted) {
+      job.completer.complete(success);
+    }
+
+    // Marcar que terminamos de imprimir
+    _isPrinting[printerType] = false;
+
+    // Procesar el siguiente trabajo en la cola (si hay)
+    if (queue.isNotEmpty) {
+      print(
+        '🔄 [COLA] Procesando siguiente trabajo para ${printerType}...',
+      );
+      // Usar scheduleMicrotask para evitar stack overflow en colas largas
+      scheduleMicrotask(() => _processQueue(printerType));
+    } else {
+      print('✅ [COLA] Todos los trabajos completados para ${printerType}');
+    }
+  }
+
+  // Ejecutar un trabajo de impresión (método interno)
+  Future<bool> _executePrintJob(_PrintJob job) async {
+    final printerName = job.printerName;
+    final bytes = job.bytes;
+    final printer = _connectedPrinters[printerName];
+
+    if (printer == null) {
+      print('❌ [EXEC] Impresora no encontrada: $printerName');
+      return false;
+    }
+
+    print('🖨️ [EXEC] Ejecutando impresión en: $printerName (${printer.typePrinter})');
+    print('📋 [EXEC] Parámetros de impresora:');
     print('   - Nombre: ${printer.deviceName}');
     print('   - Tipo: ${printer.typePrinter}');
     if (printer.typePrinter == PrinterType.usb) {
@@ -985,14 +1162,14 @@ class PrinterService extends ChangeNotifier {
     try {
       // CRÍTICO: Desconectar primero para limpiar la conexión anterior
       print(
-        '🔌 Desconectando cualquier conexión previa del tipo ${printer.typePrinter}...',
+        '🔌 [EXEC] Desconectando cualquier conexión previa del tipo ${printer.typePrinter}...',
       );
       try {
         await printerManager.disconnect(type: printer.typePrinter);
         // Dar tiempo para que se complete la desconexión
         await Future.delayed(const Duration(milliseconds: 300));
       } catch (e) {
-        print('⚠️ No había conexión previa o error al desconectar: $e');
+        print('⚠️ [EXEC] No había conexión previa o error al desconectar: $e');
       }
 
       // IMPORTANTE: Reconectar a la impresora específica antes de imprimir
@@ -1002,7 +1179,7 @@ class PrinterService extends ChangeNotifier {
       switch (printer.typePrinter) {
         case PrinterType.usb:
           try {
-            print('🔌 Conectando a impresora USB específica: $printerName');
+            print('🔌 [EXEC] Conectando a impresora USB específica: $printerName');
             print(
               '   → VendorID: ${printer.vendorId}, ProductID: ${printer.productId}',
             );
@@ -1015,9 +1192,9 @@ class PrinterService extends ChangeNotifier {
               ),
             );
             connected = true;
-            print('✅ Conectado a impresora USB: $printerName');
+            print('✅ [EXEC] Conectado a impresora USB: $printerName');
           } catch (e) {
-            print('⚠️ Error al conectar impresora USB $printerName: $e');
+            print('⚠️ [EXEC] Error al conectar impresora USB $printerName: $e');
             // Intentar imprimir de todos modos
             connected = true;
           }
@@ -1026,7 +1203,7 @@ class PrinterService extends ChangeNotifier {
         case PrinterType.bluetooth:
           try {
             print(
-              '🔌 Conectando a impresora Bluetooth específica: $printerName',
+              '🔌 [EXEC] Conectando a impresora Bluetooth específica: $printerName',
             );
             print('   → Address: ${printer.address}');
             await printerManager.connect(
@@ -1039,16 +1216,20 @@ class PrinterService extends ChangeNotifier {
               ),
             );
             connected = true;
-            print('✅ Conectado a impresora Bluetooth: $printerName');
+            print('✅ [EXEC] Conectado a impresora Bluetooth: $printerName');
           } catch (e) {
-            print('⚠️ Error al conectar impresora Bluetooth $printerName: $e');
+            print(
+              '⚠️ [EXEC] Error al conectar impresora Bluetooth $printerName: $e',
+            );
             connected = false;
           }
           break;
 
         case PrinterType.network:
           try {
-            print('🔌 Conectando a impresora de red específica: $printerName');
+            print(
+              '🔌 [EXEC] Conectando a impresora de red específica: $printerName',
+            );
             print('   → IP: ${printer.address}:${printer.port ?? "9100"}');
             await printerManager.connect(
               type: printer.typePrinter,
@@ -1058,16 +1239,18 @@ class PrinterService extends ChangeNotifier {
               ),
             );
             connected = true;
-            print('✅ Conectado a impresora de red: $printerName');
+            print('✅ [EXEC] Conectado a impresora de red: $printerName');
           } catch (e) {
-            print('⚠️ Error al conectar impresora de red $printerName: $e');
+            print(
+              '⚠️ [EXEC] Error al conectar impresora de red $printerName: $e',
+            );
             connected = false;
           }
           break;
       }
 
       if (!connected) {
-        print('❌ No se pudo conectar a la impresora: $printerName');
+        print('❌ [EXEC] No se pudo conectar a la impresora: $printerName');
         _connectionStatus[printerName] = false;
         notifyListeners();
         return false;
@@ -1077,9 +1260,9 @@ class PrinterService extends ChangeNotifier {
       await Future.delayed(const Duration(milliseconds: 200));
 
       // Enviar los bytes a la impresora
-      print('📤 Enviando ${bytes.length} bytes a $printerName...');
+      print('📤 [EXEC] Enviando ${bytes.length} bytes a $printerName...');
       await printerManager.send(type: printer.typePrinter, bytes: bytes);
-      print('✅ Impresión enviada exitosamente a: $printerName');
+      print('✅ [EXEC] Impresión enviada exitosamente a: $printerName');
 
       // Actualizar estado de conexión
       _connectionStatus[printerName] = true;
@@ -1087,7 +1270,7 @@ class PrinterService extends ChangeNotifier {
 
       return true;
     } catch (e) {
-      print('❌ Error al imprimir en $printerName: $e');
+      print('❌ [EXEC] Error al imprimir en $printerName: $e');
       _connectionStatus[printerName] = false;
       notifyListeners();
       return false;
