@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:anfibius_uwu/configuraciones.dart';
@@ -34,10 +35,26 @@ import 'package:anfibius_uwu/services/foreground_service.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 void main(List<String> args) async {
-  // Capturar errores no manejados
+  // Capturar TODOS los errores no manejados (síncronos Y asíncronos)
+  runZonedGuarded(
+    () async {
+      await _mainInit(args);
+    },
+    (error, stack) {
+      // Capturar errores asíncronos que ocurren en callbacks, timers, etc.
+      print('❌ [${DateTime.now()}] Error asíncrono no manejado: $error');
+      print('📋 Stack trace: $stack');
+      // NO dejar que la app crashee - solo loggear el error
+    },
+  );
+}
+
+Future<void> _mainInit(List<String> args) async {
+  // Capturar errores síncronos de Flutter
   FlutterError.onError = (FlutterErrorDetails details) {
-    print('Flutter Error: ${details.exception}');
-    print('StackTrace: ${details.stack}');
+    print('❌ [${DateTime.now()}] Flutter Error: ${details.exception}');
+    print('📋 StackTrace: ${details.stack}');
+    // NO dejar que la app crashee - solo loggear el error
   };
 
   WidgetsFlutterBinding.ensureInitialized();
@@ -119,7 +136,7 @@ void main(List<String> args) async {
     // Continuar sin notificaciones si hay error
   }
 
-  print('🚀 Iniciando aplicación...');
+  print('🚀 [${DateTime.now()}] Iniciando aplicación...');
   runApp(const MyApp());
 }
 
@@ -283,32 +300,42 @@ class _MyHomePageState extends State<MyHomePage>
   }
 
   void _onReceiveTaskData(Object data) {
-    if (data is Map) {
-      print('📨 Datos recibidos del servicio de primer plano: $data');
+    // 🛡️ PROTECCIÓN: Envolver en try-catch
+    try {
+      if (data is Map) {
+        print('📨 [${DateTime.now()}] Datos recibidos del servicio de primer plano: $data');
 
-      final type = data['type'];
+        final type = data['type'];
 
-      if (type == 'heartbeat') {
-        // El servicio sigue activo, actualizar UI si es necesario
-        print('💓 Heartbeat del servicio - Todo funcionando correctamente');
-      } else if (type == 'check_websocket') {
-        // Verificar que el WebSocket sigue conectado
-        final webSocketService = Provider.of<WebSocketService>(
-          context,
-          listen: false,
-        );
+        if (type == 'heartbeat') {
+          // El servicio sigue activo, actualizar UI si es necesario
+          print('💓 [${DateTime.now()}] Heartbeat del servicio - Todo funcionando correctamente');
+        } else if (type == 'check_websocket') {
+          // Verificar que el WebSocket sigue conectado
+          try {
+            final webSocketService = Provider.of<WebSocketService>(
+              context,
+              listen: false,
+            );
 
-        if (!webSocketService.isConnected) {
-          print(
-            '⚠️ WebSocket desconectado detectado por el servicio, reconectando...',
-          );
-          webSocketService.onAppResumed();
-        } else {
-          print(
-            '✅ WebSocket confirmado como activo por verificación del servicio',
-          );
+            if (!webSocketService.isConnected) {
+              print(
+                '⚠️ [${DateTime.now()}] WebSocket desconectado detectado por el servicio, reconectando...',
+              );
+              webSocketService.onAppResumed();
+            } else {
+              print(
+                '✅ [${DateTime.now()}] WebSocket confirmado como activo por verificación del servicio',
+              );
+            }
+          } catch (e) {
+            print('❌ [${DateTime.now()}] Error al verificar WebSocket: $e');
+          }
         }
       }
+    } catch (e, stackTrace) {
+      print('❌ [${DateTime.now()}] Error en _onReceiveTaskData: $e');
+      print('📋 Stack trace: $stackTrace');
     }
   }
 
@@ -316,49 +343,63 @@ class _MyHomePageState extends State<MyHomePage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
-    final webSocketService = Provider.of<WebSocketService>(
-      context,
-      listen: false,
-    );
+    // 🛡️ PROTECCIÓN: Envolver en try-catch
+    try {
+      final webSocketService = Provider.of<WebSocketService>(
+        context,
+        listen: false,
+      );
 
-    switch (state) {
-      case AppLifecycleState.paused:
-        // App va a segundo plano
-        print('📱 App pausada (segundo plano)');
-        webSocketService.onAppPaused();
+      switch (state) {
+        case AppLifecycleState.paused:
+          // App va a segundo plano
+          print('📱 [${DateTime.now()}] App pausada (segundo plano)');
+          webSocketService.onAppPaused();
 
-        if (Platform.isAndroid) {
-          PrinterForegroundService.updateNotification(
-            title: 'Servicio en segundo plano',
-            text: 'Escuchando órdenes de impresión...',
-          );
-        }
-        break;
+          if (Platform.isAndroid) {
+            try {
+              PrinterForegroundService.updateNotification(
+                title: 'Servicio en segundo plano',
+                text: 'Escuchando órdenes de impresión...',
+              );
+            } catch (e) {
+              print('⚠️ [${DateTime.now()}] Error actualizando notificación: $e');
+            }
+          }
+          break;
 
-      case AppLifecycleState.resumed:
-        // App vuelve a primer plano
-        print('📱 App reanudada (primer plano)');
-        webSocketService.onAppResumed();
+        case AppLifecycleState.resumed:
+          // App vuelve a primer plano
+          print('📱 [${DateTime.now()}] App reanudada (primer plano)');
+          webSocketService.onAppResumed();
 
-        if (Platform.isAndroid) {
-          PrinterForegroundService.updateNotification(
-            title: 'Servicio de Impresión Activo',
-            text: 'App en primer plano',
-          );
-        }
-        break;
+          if (Platform.isAndroid) {
+            try {
+              PrinterForegroundService.updateNotification(
+                title: 'Servicio de Impresión Activo',
+                text: 'App en primer plano',
+              );
+            } catch (e) {
+              print('⚠️ [${DateTime.now()}] Error actualizando notificación: $e');
+            }
+          }
+          break;
 
-      case AppLifecycleState.inactive:
-        print('📱 App inactiva');
-        break;
+        case AppLifecycleState.inactive:
+          print('📱 [${DateTime.now()}] App inactiva');
+          break;
 
-      case AppLifecycleState.detached:
-        print('📱 App desconectada');
-        break;
+        case AppLifecycleState.detached:
+          print('📱 [${DateTime.now()}] App desconectada');
+          break;
 
-      case AppLifecycleState.hidden:
-        print('📱 App oculta');
-        break;
+        case AppLifecycleState.hidden:
+          print('📱 [${DateTime.now()}] App oculta');
+          break;
+      }
+    } catch (e, stackTrace) {
+      print('❌ [${DateTime.now()}] Error en didChangeAppLifecycleState: $e');
+      print('📋 Stack trace: $stackTrace');
     }
   }
 
@@ -375,9 +416,10 @@ class _MyHomePageState extends State<MyHomePage>
 
     // Configurar el callback para imprimir automáticamente cuando llegue un mensaje
     webSocketService.onNewMessage = (String jsonMessage) async {
+      // 🛡️ PROTECCIÓN: Envolver TODO en try-catch para evitar crashes
       try {
         print(
-          '🖨️ Procesando impresión automática para mensaje: ${jsonMessage.length > 100 ? "${jsonMessage.substring(0, 100)}..." : jsonMessage}',
+          '🖨️ [${DateTime.now()}] Procesando impresión automática para mensaje: ${jsonMessage.length > 100 ? "${jsonMessage.substring(0, 100)}..." : jsonMessage}',
         );
 
         // Validar tipos permitidos antes de procesar
@@ -486,13 +528,19 @@ class _MyHomePageState extends State<MyHomePage>
           );
         }
       } catch (e, stackTrace) {
-        print('❌ Error en impresión automática: $e');
+        print('❌ [${DateTime.now()}] Error en impresión automática: $e');
         print('📋 Stack trace: $stackTrace');
-        NotificationsService().showNotification(
-          id: DateTime.now().millisecondsSinceEpoch,
-          title: 'Error de impresión',
-          body: 'Error al procesar la orden: $e',
-        );
+        
+        // 🛡️ PROTECCIÓN: No dejar que las notificaciones crasheen
+        try {
+          NotificationsService().showNotification(
+            id: DateTime.now().millisecondsSinceEpoch,
+            title: 'Error de impresión',
+            body: 'Error al procesar la orden: $e',
+          );
+        } catch (notificationError) {
+          print('⚠️ [${DateTime.now()}] No se pudo mostrar notificación: $notificationError');
+        }
       }
     };
 

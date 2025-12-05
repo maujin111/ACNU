@@ -29,6 +29,9 @@ class WebSocketService extends ChangeNotifier {
   // Temporizador para heartbeat
   Timer? _heartbeatTimer;
 
+  // Temporizador para verificación periódica de conexión
+  Timer? _connectionCheckTimer;
+
   // Contador de intentos de reconexión
   int _reconnectAttempts = 0;
   static const int _maxReconnectAttempts = 10;
@@ -38,6 +41,9 @@ class WebSocketService extends ChangeNotifier {
 
   // Flag para saber si la app está en segundo plano
   bool _isInBackground = false;
+
+  // Flag para saber si el servicio fue disposed
+  bool _isDisposed = false;
 
   WebSocketService() {
     // Comenzar inicialización en la construcción del servicio
@@ -152,7 +158,7 @@ class WebSocketService extends ChangeNotifier {
         }
         await _connect();
       }
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       print('Error al inicializar WebSocketService: $e');
     }
@@ -189,11 +195,11 @@ class WebSocketService extends ChangeNotifier {
   // Método para forzar reconexión (usado en botón "Reconectar")
   Future<void> forceReconnect() async {
     if (_token == null || _token!.isEmpty) {
-      print('❌ No hay token disponible para reconectar');
+      print('❌ [${DateTime.now()}] No hay token disponible para reconectar');
       return;
     }
 
-    print('🔄 Forzando reconexión...');
+    print('🔄 [${DateTime.now()}] Forzando reconexión...');
 
     // Deshabilitar reconexión automática temporalmente
     _shouldAutoReconnect = false;
@@ -300,7 +306,8 @@ class WebSocketService extends ChangeNotifier {
             print('WebSocket desconectado (onDone)');
             _isConnected = false;
             _heartbeatTimer?.cancel();
-            notifyListeners();
+            _connectionCheckTimer?.cancel();
+            _safeNotifyListeners();
             // Intentar reconectar después de un tiempo
             _scheduleReconnect();
           },
@@ -313,7 +320,7 @@ class WebSocketService extends ChangeNotifier {
         _isConnected = true;
         _reconnectAttempts = 0; // Resetear intentos en conexión exitosa
         _startHeartbeat(); // Iniciar heartbeat para detectar conexiones muertas
-        notifyListeners();
+        _safeNotifyListeners();
         print('✅ Conectado exitosamente a: $urlString');
         return; // Salir del bucle si la conexión fue exitosa
       } catch (e) {
@@ -327,50 +334,78 @@ class WebSocketService extends ChangeNotifier {
     // Si llegamos aquí, ninguna URL funcionó
     print('❌ No se pudo conectar con ninguna de las URLs disponibles');
     _isConnected = false;
-    notifyListeners();
+    _safeNotifyListeners();
     // Intentar reconectar después de un tiempo
     _scheduleReconnect();
   }
 
   void _scheduleReconnect() {
-    // No intentar reconectar si se desconectó manualmente
-    if (!_shouldAutoReconnect) {
-      print('Reconexión automática deshabilitada');
-      return;
-    }
-
-    // Cancelar cualquier temporizador anterior
-    _reconnectTimer?.cancel();
-    _heartbeatTimer?.cancel();
-
-    // Verificar si se alcanzó el máximo de intentos
-    if (_reconnectAttempts >= _maxReconnectAttempts) {
-      print(
-        '❌ Máximo de intentos de reconexión alcanzado ($_maxReconnectAttempts)',
-      );
-      _shouldAutoReconnect = false;
-      return;
-    }
-
-    _reconnectAttempts++;
-
-    // Usar backoff exponencial: 5s, 10s, 20s, 40s, hasta max 60s
-    int delaySeconds = (5 * (1 << (_reconnectAttempts - 1))).clamp(5, 60);
-
-    print('Programando reconexión #$_reconnectAttempts en ${delaySeconds}s...');
-
-    // Programar un intento de reconexión
-    _reconnectTimer = Timer(Duration(seconds: delaySeconds), () {
-      if (!_isConnected &&
-          _token != null &&
-          _token!.isNotEmpty &&
-          _shouldAutoReconnect) {
-        print(
-          'Intentando reconectar al WebSocket (intento #$_reconnectAttempts)...',
-        );
-        _connect();
+    // 🛡️ PROTECCIÓN: Envolver en try-catch
+    try {
+      // No intentar reconectar si se desconectó manualmente
+      if (!_shouldAutoReconnect) {
+        print('⚠️ [${DateTime.now()}] Reconexión automática deshabilitada');
+        return;
       }
-    });
+
+      // Verificar si el servicio fue disposed
+      if (_isDisposed) {
+        print('⚠️ [${DateTime.now()}] Servicio disposed, no se programará reconexión');
+        return;
+      }
+
+      // Cancelar cualquier temporizador anterior
+      _reconnectTimer?.cancel();
+      _heartbeatTimer?.cancel();
+
+      // 🔥 CAMBIO: NO detener reconexión automática después de X intentos
+      // Siempre mantener intentando reconectar INDEFINIDAMENTE
+      _reconnectAttempts++;
+
+      // Usar backoff exponencial: 5s, 10s, 20s, 40s, hasta max 60s
+      // Después de llegar a 60s, seguir intentando cada 60s INDEFINIDAMENTE
+      int delaySeconds = (5 * (1 << (_reconnectAttempts - 1))).clamp(5, 60);
+
+      print('🔄 [${DateTime.now()}] Programando reconexión #$_reconnectAttempts en ${delaySeconds}s...');
+
+      // Programar un intento de reconexión
+      _reconnectTimer = Timer(Duration(seconds: delaySeconds), () {
+        // 🛡️ PROTECCIÓN: Envolver callback en try-catch
+        try {
+          if (_isDisposed) {
+            print('⚠️ [${DateTime.now()}] Servicio disposed en callback de reconexión');
+            return;
+          }
+
+          if (!_isConnected &&
+              _token != null &&
+              _token!.isNotEmpty &&
+              _shouldAutoReconnect) {
+            print(
+              '🔄 [${DateTime.now()}] Intentando reconectar al WebSocket (intento #$_reconnectAttempts)...',
+            );
+            _connect();
+          } else if (_isConnected) {
+            print('✅ [${DateTime.now()}] Ya conectado, cancelando reconexión');
+            _reconnectAttempts = 0; // Resetear contador
+          }
+        } catch (e, stackTrace) {
+          print('❌ [${DateTime.now()}] Error crítico en callback de reconexión: $e');
+          print('📋 Stack trace: $stackTrace');
+          // Intentar de nuevo después de un tiempo
+          if (!_isDisposed && _shouldAutoReconnect) {
+            Future.delayed(const Duration(seconds: 10), () {
+              if (!_isDisposed && !_isConnected) {
+                _scheduleReconnect();
+              }
+            });
+          }
+        }
+      });
+    } catch (e, stackTrace) {
+      print('❌ [${DateTime.now()}] Error crítico en _scheduleReconnect: $e');
+      print('📋 Stack trace: $stackTrace');
+    }
   }
 
   void disconnect() {
@@ -391,7 +426,7 @@ class WebSocketService extends ChangeNotifier {
     // Resetear contador de intentos
     _reconnectAttempts = 0;
 
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   // Iniciar heartbeat para detectar conexiones muertas
@@ -406,27 +441,81 @@ class WebSocketService extends ChangeNotifier {
             : const Duration(seconds: 15);
 
     _heartbeatTimer = Timer.periodic(heartbeatInterval, (timer) {
-      if (_isConnected && _channel != null) {
-        try {
-          // Enviar un ping simple para mantener la conexión viva
-          _channel!.sink.add(
-            json.encode({
-              'type': 'ping',
-              'timestamp': DateTime.now().millisecondsSinceEpoch,
-            }),
-          );
-          print('📡 Keep-alive ping enviado');
-        } catch (e) {
-          print('❌ Error al enviar heartbeat: $e');
-          // Si falla el heartbeat, considerar la conexión como muerta
-          _isConnected = false;
-          _heartbeatTimer?.cancel();
-          notifyListeners();
+      // 🛡️ PROTECCIÓN: Envolver TODO en try-catch para evitar crashes
+      try {
+        // Verificar si el servicio fue disposed
+        if (_isDisposed) {
+          print('⚠️ [${DateTime.now()}] Servicio disposed, cancelando heartbeat');
+          timer.cancel();
+          return;
+        }
+
+        if (_isConnected && _channel != null) {
+          try {
+            // Enviar un ping simple para mantener la conexión viva
+            _channel!.sink.add(
+              json.encode({
+                'type': 'ping',
+                'timestamp': DateTime.now().millisecondsSinceEpoch,
+              }),
+            );
+            print('📡 [${DateTime.now()}] Keep-alive ping enviado');
+          } catch (e) {
+            print('❌ [${DateTime.now()}] Error al enviar heartbeat: $e');
+            // Si falla el heartbeat, considerar la conexión como muerta
+            _isConnected = false;
+            _heartbeatTimer?.cancel();
+            _safeNotifyListeners();
+            _scheduleReconnect();
+          }
+        } else {
+          // Si no hay conexión, intentar reconectar
+          print('⚠️ [${DateTime.now()}] Heartbeat detectó desconexión, intentando reconectar...');
+          timer.cancel();
+          if (_shouldAutoReconnect && !_isDisposed) {
+            _scheduleReconnect();
+          }
+        }
+      } catch (e, stackTrace) {
+        // 🛡️ CAPTURAR CUALQUIER ERROR INESPERADO
+        print('❌ [${DateTime.now()}] Error crítico en heartbeat: $e');
+        print('📋 Stack trace: $stackTrace');
+        // NO dejar que crashee - intentar recuperar
+        timer.cancel();
+        if (_shouldAutoReconnect && !_isDisposed) {
           _scheduleReconnect();
         }
-      } else {
-        // Detener heartbeat si no hay conexión
-        timer.cancel();
+      }
+    });
+
+    // 🔥 NUEVO: Iniciar verificación periódica de conexión cada 60 segundos
+    _startConnectionCheck();
+  }
+
+  // 🆕 Verificación periódica agresiva de conexión
+  void _startConnectionCheck() {
+    _connectionCheckTimer?.cancel();
+
+    _connectionCheckTimer = Timer.periodic(const Duration(seconds: 60), (timer) {
+      try {
+        if (_isDisposed) {
+          timer.cancel();
+          return;
+        }
+
+        print('🔍 [${DateTime.now()}] Verificación periódica de conexión...');
+
+        // Si no está conectado y tiene token, forzar reconexión
+        if (!_isConnected && _token != null && _token!.isNotEmpty && _shouldAutoReconnect) {
+          print('⚠️ [${DateTime.now()}] Conexión perdida detectada, forzando reconexión...');
+          _reconnectAttempts = 0; // Resetear contador para intentar de nuevo
+          _connect();
+        } else if (_isConnected) {
+          print('✅ [${DateTime.now()}] Conexión verificada como activa');
+        }
+      } catch (e, stackTrace) {
+        print('❌ [${DateTime.now()}] Error en verificación de conexión: $e');
+        print('📋 Stack trace: $stackTrace');
       }
     });
   }
@@ -529,7 +618,7 @@ class WebSocketService extends ChangeNotifier {
         onNewMessage!(jsonMessage);
       }
 
-      notifyListeners();
+      _safeNotifyListeners();
     }
   }
 
@@ -540,7 +629,8 @@ class WebSocketService extends ChangeNotifier {
 
     _isConnected = false;
     _heartbeatTimer?.cancel();
-    notifyListeners();
+    _connectionCheckTimer?.cancel();
+    _safeNotifyListeners();
 
     // Intentar reconectar después de un tiempo
     _scheduleReconnect();
@@ -572,16 +662,43 @@ class WebSocketService extends ChangeNotifier {
     }
   }
 
+  // 🆕 Método seguro para notificar listeners
+  void _safeNotifyListeners() {
+    try {
+      if (!_isDisposed) {
+        notifyListeners();
+      } else {
+        print('⚠️ [${DateTime.now()}] Intento de notificar listeners en servicio disposed');
+      }
+    } catch (e, stackTrace) {
+      print('❌ [${DateTime.now()}] Error al notificar listeners: $e');
+      print('📋 Stack trace: $stackTrace');
+      // NO dejar que crashee
+    }
+  }
+
   @override
   void dispose() {
-    print('Limpiando WebSocketService...');
-    _shouldAutoReconnect = false; // Deshabilitar reconexión al hacer dispose
+    print('🛑 [${DateTime.now()}] Limpiando WebSocketService...');
+    
+    // Marcar como disposed PRIMERO
+    _isDisposed = true;
+    
+    // Deshabilitar reconexión al hacer dispose
+    _shouldAutoReconnect = false;
+    
+    // Cancelar TODOS los temporizadores
     _reconnectTimer?.cancel();
     _heartbeatTimer?.cancel();
+    _connectionCheckTimer?.cancel();
 
     // Deshabilitar wake lock al hacer dispose
     if (Platform.isAndroid) {
-      WakelockPlus.disable();
+      try {
+        WakelockPlus.disable();
+      } catch (e) {
+        print('⚠️ [${DateTime.now()}] Error deshabilitando wake lock: $e');
+      }
     }
 
     disconnect();
@@ -625,7 +742,7 @@ class WebSocketService extends ChangeNotifier {
       await ConfigService.clearMessages();
 
       // Notificar a los oyentes sobre el cambio
-      notifyListeners();
+      _safeNotifyListeners();
 
       print('Historial de impresión limpiado correctamente');
     } catch (e) {
