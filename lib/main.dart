@@ -257,6 +257,9 @@ class _MyHomePageState extends State<MyHomePage>
     with TrayListener, WindowListener, WidgetsBindingObserver {
   WindowController? window;
   final Map<int, WindowController> _childWindows = {};
+  
+  // 🛡️ Flag para saber si estamos en suspensión (evita crashes en window_manager/tray_manager)
+  bool _isSystemSuspended = false;
 
   @override
   void initState() {
@@ -349,12 +352,37 @@ class _MyHomePageState extends State<MyHomePage>
         context,
         listen: false,
       );
+      
+      // 🆕 Obtener el PrinterService
+      final printerService = Provider.of<PrinterService>(
+        context,
+        listen: false,
+      );
+
+      print('📱 [${DateTime.now()}] Cambio de estado del ciclo de vida: $state');
 
       switch (state) {
         case AppLifecycleState.paused:
-          // App va a segundo plano
-          print('📱 [${DateTime.now()}] App pausada (segundo plano)');
-          webSocketService.onAppPaused();
+          // App va a segundo plano o laptop entra en suspensión
+          print('📱 [${DateTime.now()}] App pausada (segundo plano/suspensión)');
+          
+          // 🛡️ CRÍTICO: Marcar como suspendido ANTES de cualquier otra operación
+          _isSystemSuspended = true;
+          
+          try {
+            webSocketService.onAppPaused();
+          } catch (e, stackTrace) {
+            print('❌ [${DateTime.now()}] Error en onAppPaused: $e');
+            print('📋 Stack trace: $stackTrace');
+          }
+          
+          // 🆕 CRÍTICO: Pausar servicio de impresoras para evitar ACCESS_VIOLATION en FFI
+          try {
+            printerService.pauseService();
+          } catch (e, stackTrace) {
+            print('❌ [${DateTime.now()}] Error pausando PrinterService: $e');
+            print('📋 Stack trace: $stackTrace');
+          }
 
           if (Platform.isAndroid) {
             try {
@@ -369,9 +397,51 @@ class _MyHomePageState extends State<MyHomePage>
           break;
 
         case AppLifecycleState.resumed:
-          // App vuelve a primer plano
-          print('📱 [${DateTime.now()}] App reanudada (primer plano)');
-          webSocketService.onAppResumed();
+          // App vuelve a primer plano o laptop sale de suspensión
+          print('📱 [${DateTime.now()}] App reanudada (primer plano/despertar)');
+          
+          // En Windows, esperar un poco para que el sistema se estabilice después de suspensión
+          if (Platform.isWindows) {
+            print('💻 Windows: Esperando 3 segundos para estabilización del sistema...');
+            Future.delayed(const Duration(seconds: 3), () {
+              if (mounted) {
+                // 🛡️ Marcar como NO suspendido
+                _isSystemSuspended = false;
+                
+                try {
+                  webSocketService.onAppResumed();
+                } catch (e, stackTrace) {
+                  print('❌ [${DateTime.now()}] Error en onAppResumed (delayed): $e');
+                  print('📋 Stack trace: $stackTrace');
+                }
+                
+                // 🆕 Reanudar servicio de impresoras
+                try {
+                  printerService.resumeService();
+                } catch (e, stackTrace) {
+                  print('❌ [${DateTime.now()}] Error reanudando PrinterService: $e');
+                  print('📋 Stack trace: $stackTrace');
+                }
+              }
+            });
+          } else {
+            // En otras plataformas, llamar inmediatamente
+            _isSystemSuspended = false;
+            
+            try {
+              webSocketService.onAppResumed();
+            } catch (e, stackTrace) {
+              print('❌ [${DateTime.now()}] Error en onAppResumed: $e');
+              print('📋 Stack trace: $stackTrace');
+            }
+            
+            try {
+              printerService.resumeService();
+            } catch (e, stackTrace) {
+              print('❌ [${DateTime.now()}] Error reanudando PrinterService: $e');
+              print('📋 Stack trace: $stackTrace');
+            }
+          }
 
           if (Platform.isAndroid) {
             try {
@@ -395,6 +465,30 @@ class _MyHomePageState extends State<MyHomePage>
 
         case AppLifecycleState.hidden:
           print('📱 [${DateTime.now()}] App oculta');
+          // En Windows, hidden puede ocurrir antes de paused
+          if (Platform.isWindows) {
+            // 🛡️ CRÍTICO: Marcar como suspendido INMEDIATAMENTE
+            _isSystemSuspended = true;
+            
+            try {
+              webSocketService.onAppPaused();
+            } catch (e, stackTrace) {
+              print('❌ [${DateTime.now()}] Error en onAppPaused desde hidden: $e');
+              print('📋 Stack trace: $stackTrace');
+            }
+            
+            // 🆕 También pausar PrinterService
+            try {
+              final printerService = Provider.of<PrinterService>(
+                context,
+                listen: false,
+              );
+              printerService.pauseService();
+            } catch (e, stackTrace) {
+              print('❌ [${DateTime.now()}] Error pausando PrinterService desde hidden: $e');
+              print('📋 Stack trace: $stackTrace');
+            }
+          }
           break;
       }
     } catch (e, stackTrace) {
@@ -404,6 +498,12 @@ class _MyHomePageState extends State<MyHomePage>
   }
 
   void _setupAutoPrint() {
+    // 🛡️ Verificar que el widget sigue montado
+    if (!mounted) {
+      print('⚠️ Widget no montado, abortando setup de auto print');
+      return;
+    }
+
     final webSocketService = Provider.of<WebSocketService>(
       context,
       listen: false,
@@ -605,65 +705,109 @@ class _MyHomePageState extends State<MyHomePage>
 
   @override
   void onWindowClose() {
-    minimizeToTray();
+    // 🛡️ PROTECCIÓN: No llamar a minimizeToTray durante suspensión
+    if (_isSystemSuspended) {
+      print('⚠️ [${DateTime.now()}] Sistema suspendido, ignorando onWindowClose');
+      return;
+    }
+    
+    try {
+      minimizeToTray();
+    } catch (e, stackTrace) {
+      print('❌ [${DateTime.now()}] Error en onWindowClose: $e');
+      print('📋 Stack trace: $stackTrace');
+    }
   }
 
   void minimizeToTray() async {
     if (!_isDesktop()) return;
+    
+    // 🛡️ PROTECCIÓN: No llamar a windowManager durante suspensión
+    if (_isSystemSuspended) {
+      print('⚠️ [${DateTime.now()}] Sistema suspendido, ignorando minimizeToTray');
+      return;
+    }
 
-    await windowManager.hide();
-    // Mostrar notificación cuando se minimiza a la bandeja
-    NotificationsService().showNotification(
-      id: 1, // ID único para esta notificación
-      title: 'Anfibius Connect Nexus Utility',
-      body:
-          'La aplicación continúa ejecutándose en segundo plano. Haz clic en el ícono de la bandeja para mostrarla nuevamente.',
-    );
+    try {
+      await windowManager.hide();
+      // Mostrar notificación cuando se minimiza a la bandeja
+      NotificationsService().showNotification(
+        id: 1, // ID único para esta notificación
+        title: 'Anfibius Connect Nexus Utility',
+        body:
+            'La aplicación continúa ejecutándose en segundo plano. Haz clic en el ícono de la bandeja para mostrarla nuevamente.',
+      );
+    } catch (e, stackTrace) {
+      print('❌ [${DateTime.now()}] Error en minimizeToTray: $e');
+      print('📋 Stack trace: $stackTrace');
+    }
   }
 
   @override
   void onTrayIconMouseDown() {
     if (!_isDesktop()) return;
+    
+    // 🛡️ PROTECCIÓN: No llamar a windowManager durante suspensión
+    if (_isSystemSuspended) {
+      print('⚠️ [${DateTime.now()}] Sistema suspendido, ignorando onTrayIconMouseDown');
+      return;
+    }
 
-    windowManager.show();
-    windowManager.focus();
+    try {
+      windowManager.show();
+      windowManager.focus();
+    } catch (e, stackTrace) {
+      print('❌ [${DateTime.now()}] Error en onTrayIconMouseDown: $e');
+      print('📋 Stack trace: $stackTrace');
+    }
   }
 
   @override
   void onTrayMenuItemClick(MenuItem item) {
     if (!_isDesktop()) return;
+    
+    // 🛡️ PROTECCIÓN: No llamar a windowManager durante suspensión
+    if (_isSystemSuspended) {
+      print('⚠️ [${DateTime.now()}] Sistema suspendido, ignorando onTrayMenuItemClick: ${item.key}');
+      return;
+    }
 
-    switch (item.key) {
-      case 'show':
-        windowManager.show();
-        windowManager.focus();
-        break;
-      case 'settings':
-        windowManager.show();
-        windowManager.focus();
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const GeneralSettingsScreen(),
-            ),
-          );
-        });
-        break;
-      case 'printers':
-        windowManager.show();
-        windowManager.focus();
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const PrinterConfig()),
-          );
-        });
-        break;
-      case 'exit':
-        windowManager.destroy();
-        SystemNavigator.pop();
-        break;
+    try {
+      switch (item.key) {
+        case 'show':
+          windowManager.show();
+          windowManager.focus();
+          break;
+        case 'settings':
+          windowManager.show();
+          windowManager.focus();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const GeneralSettingsScreen(),
+              ),
+            );
+          });
+          break;
+        case 'printers':
+          windowManager.show();
+          windowManager.focus();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const PrinterConfig()),
+            );
+          });
+          break;
+        case 'exit':
+          windowManager.destroy();
+          SystemNavigator.pop();
+          break;
+      }
+    } catch (e, stackTrace) {
+      print('❌ [${DateTime.now()}] Error en onTrayMenuItemClick: $e');
+      print('📋 Stack trace: $stackTrace');
     }
   }
 

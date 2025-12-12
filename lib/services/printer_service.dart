@@ -97,6 +97,9 @@ class PrinterService extends ChangeNotifier {
   Timer? _connectionCheckTimer;
   // Callback para notificar cambios en el estado de conexión
   Function(bool isConnected, String? printerName)? onConnectionChanged;
+  
+  // Flag para saber si el servicio está pausado (Windows en suspensión)
+  bool _isPaused = false;
 
   PrinterService() {
     // En Windows, preferir USB por defecto pero permitir Bluetooth también
@@ -353,15 +356,28 @@ class PrinterService extends ChangeNotifier {
     // Cancelar cualquier timer existente
     _connectionCheckTimer?.cancel();
 
+    // No iniciar timer si está pausado (Windows en suspensión)
+    if (_isPaused) {
+      print('⏸️ Servicio pausado, no se inicia timer de verificación');
+      return;
+    }
+
     // Crear un nuevo timer para verificar la conexión cada 5 segundos
     _connectionCheckTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      // No verificar si está pausado
+      if (_isPaused) {
+        return;
+      }
       _checkPrinterConnection();
     });
   }
 
   // Verificar el estado de conexión de la impresora
   Future<void> _checkPrinterConnection() async {
-    if (selectedPrinter == null) return;
+    // 🛡️ No verificar si está pausado o no hay impresora
+    if (_isPaused || selectedPrinter == null) {
+      return;
+    }
 
     try {
       bool isConnectedNow = false;
@@ -381,7 +397,7 @@ class PrinterService extends ChangeNotifier {
         case PrinterType.network:
           // Para impresoras de red, intentamos una "ping" básica
           try {
-            // Verificamos la impresora intentando abrir una conexión
+            // 🛡️ Proteger la llamada a connect con try-catch
             await printerManager.connect(
               type: PrinterType.network,
               model: TcpPrinterInput(
@@ -412,6 +428,7 @@ class PrinterService extends ChangeNotifier {
       }
     } catch (e) {
       print('❌ Error al verificar estado de la impresora: $e');
+      // No propagar el error para evitar crashes
     }
   }
 
@@ -1899,23 +1916,84 @@ class PrinterService extends ChangeNotifier {
     return false;
   }
 
+  /// Pausar el servicio (cuando Windows entra en suspensión)
+  void pauseService() {
+    print('⏸️ [PrinterService] Pausando servicio de impresoras...');
+    _isPaused = true;
+    
+    // Cancelar timer de verificación para evitar ACCESS_VIOLATION en FFI
+    try {
+      _connectionCheckTimer?.cancel();
+      _connectionCheckTimer = null;
+      print('✅ [PrinterService] Timer de verificación cancelado');
+    } catch (e) {
+      print('⚠️ [PrinterService] Error cancelando timer: $e');
+    }
+  }
+  
+  /// Reanudar el servicio (cuando Windows sale de suspensión)
+  void resumeService() {
+    print('▶️ [PrinterService] Reanudando servicio de impresoras...');
+    _isPaused = false;
+    
+    // Reiniciar timer de verificación después de un delay
+    Future.delayed(const Duration(seconds: 3), () {
+      if (!_isPaused) {
+        print('🔄 [PrinterService] Reiniciando timer de verificación...');
+        _initConnectionChecker();
+      }
+    });
+  }
+
   // Método para liberar recursos cuando se destruye la instancia
   @override
   void dispose() {
+    print('🛑 [PrinterService] Limpiando recursos...');
+    
+    // Marcar como pausado para detener operaciones
+    _isPaused = true;
+    
     // Cancelar suscripciones
-    _subscription?.cancel();
-    _subscriptionBtStatus?.cancel();
-    _subscriptionUsbStatus?.cancel();
+    try {
+      _subscription?.cancel();
+      _subscription = null;
+    } catch (e) {
+      print('⚠️ [PrinterService] Error cancelando subscription: $e');
+    }
+    
+    try {
+      _subscriptionBtStatus?.cancel();
+      _subscriptionBtStatus = null;
+    } catch (e) {
+      print('⚠️ [PrinterService] Error cancelando BT status subscription: $e');
+    }
+    
+    try {
+      _subscriptionUsbStatus?.cancel();
+      _subscriptionUsbStatus = null;
+    } catch (e) {
+      print('⚠️ [PrinterService] Error cancelando USB status subscription: $e');
+    }
 
     // Cancelar el timer de verificación
-    _connectionCheckTimer?.cancel();
+    try {
+      _connectionCheckTimer?.cancel();
+      _connectionCheckTimer = null;
+    } catch (e) {
+      print('⚠️ [PrinterService] Error cancelando connection check timer: $e');
+    }
 
     // Desconectar de la impresora si está conectada
     if (_isConnected && selectedPrinter != null) {
-      printerManager.disconnect(type: selectedPrinter!.typePrinter);
+      try {
+        printerManager.disconnect(type: selectedPrinter!.typePrinter);
+      } catch (e) {
+        print('⚠️ [PrinterService] Error desconectando impresora: $e');
+      }
     }
 
     super.dispose();
+    print('✅ [PrinterService] Recursos liberados');
   }
 
   // Olvidar la impresora seleccionada actualmente
