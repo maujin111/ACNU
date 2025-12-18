@@ -1991,6 +1991,9 @@ class PrinterService extends ChangeNotifier {
         print('⚠️ [PrinterService] Error desconectando impresora: $e');
       }
     }
+    
+    // 🆕 Limpiar listas para evitar memory leaks
+    devices.clear();
 
     super.dispose();
     print('✅ [PrinterService] Recursos liberados');

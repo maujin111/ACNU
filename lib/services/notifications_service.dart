@@ -11,6 +11,9 @@ class NotificationsService {
 
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
+  
+  // 🆕 Callback para manejar clicks en notificaciones
+  Function(String? payload)? onNotificationClick;
 
   // Inicializar el servicio de notificaciones
   Future<void> init() async {
@@ -41,14 +44,6 @@ class NotificationsService {
     const LinuxInitializationSettings initializationSettingsLinux =
         LinuxInitializationSettings(
           defaultActionName: 'Open notification',
-        ); // Configuración para Windows
-    const WindowsInitializationSettings initializationSettingsWindows =
-        WindowsInitializationSettings(
-          appName: 'Anfibius Connect Nexus Utility',
-          iconPath:
-              'assets/icon/app_icon.ico', // Ruta al icono de la aplicación
-          appUserModelId: 'com.example.anfibius_uwu',
-          guid: 'fd34f92d-c18e-4ee0-8a44-a6a7c1f0f1a8',
         );
 
     // Configuración general para todos los sistemas
@@ -58,7 +53,6 @@ class NotificationsService {
           iOS: initializationSettingsIOS,
           macOS: initializationSettingsMacOS,
           linux: initializationSettingsLinux,
-          windows: initializationSettingsWindows,
         );
 
     // Inicializar el plugin con la configuración
@@ -85,8 +79,12 @@ class NotificationsService {
   // Método para manejar el tap en la notificación
   void _onNotificationTap(NotificationResponse notificationResponse) {
     // Aquí puedes manejar la acción cuando el usuario toca la notificación
-    // por ejemplo, navegar a una pantalla específica
     debugPrint('Notificación tocada: ${notificationResponse.payload}');
+    
+    // 🆕 Llamar al callback si está definido
+    if (onNotificationClick != null) {
+      onNotificationClick!(notificationResponse.payload);
+    }
   }
 
   // Método para mostrar una notificación simple en todos los sistemas
@@ -97,8 +95,8 @@ class NotificationsService {
     String? payload,
   }) async {
     // Detalles de la notificación para Android
-    AndroidNotificationDetails androidPlatformChannelSpecifics =
-        const AndroidNotificationDetails(
+    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+        AndroidNotificationDetails(
           'default_channel',
           'Notificaciones',
           channelDescription: 'Canal de notificaciones predeterminado',
@@ -108,28 +106,25 @@ class NotificationsService {
         );
 
     // Detalles de la notificación para iOS/macOS
-    DarwinNotificationDetails darwinPlatformChannelSpecifics =
-        const DarwinNotificationDetails(
+    const DarwinNotificationDetails darwinPlatformChannelSpecifics =
+        DarwinNotificationDetails(
           presentAlert: true,
           presentBadge: true,
           presentSound: true,
-        ); // Detalles de la notificación para Linux
-    LinuxNotificationDetails linuxPlatformChannelSpecifics =
-        const LinuxNotificationDetails(
+        );
+
+    // Detalles de la notificación para Linux
+    const LinuxNotificationDetails linuxPlatformChannelSpecifics =
+        LinuxNotificationDetails(
           urgency: LinuxNotificationUrgency.normal,
         );
 
-    // Detalles de la notificación para Windows
-    WindowsNotificationDetails windowsPlatformChannelSpecifics =
-        const WindowsNotificationDetails();
-
     // Detalles generales para todos los sistemas
-    NotificationDetails platformChannelSpecifics = NotificationDetails(
+    const NotificationDetails platformChannelSpecifics = NotificationDetails(
       android: androidPlatformChannelSpecifics,
       iOS: darwinPlatformChannelSpecifics,
       macOS: darwinPlatformChannelSpecifics,
       linux: linuxPlatformChannelSpecifics,
-      windows: windowsPlatformChannelSpecifics,
     );
 
     // Mostrar la notificación
@@ -151,8 +146,8 @@ class NotificationsService {
     String? payload,
   }) async {
     // Detalles de la notificación para Android
-    AndroidNotificationDetails androidPlatformChannelSpecifics =
-        const AndroidNotificationDetails(
+    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+        AndroidNotificationDetails(
           'scheduled_channel',
           'Notificaciones Programadas',
           channelDescription: 'Canal para notificaciones programadas',
@@ -161,28 +156,25 @@ class NotificationsService {
         );
 
     // Detalles de la notificación para iOS/macOS
-    DarwinNotificationDetails darwinPlatformChannelSpecifics =
-        const DarwinNotificationDetails(
+    const DarwinNotificationDetails darwinPlatformChannelSpecifics =
+        DarwinNotificationDetails(
           presentAlert: true,
           presentBadge: true,
           presentSound: true,
-        ); // Detalles de la notificación para Linux
-    LinuxNotificationDetails linuxPlatformChannelSpecifics =
-        const LinuxNotificationDetails(
+        );
+
+    // Detalles de la notificación para Linux
+    const LinuxNotificationDetails linuxPlatformChannelSpecifics =
+        LinuxNotificationDetails(
           urgency: LinuxNotificationUrgency.normal,
         );
 
-    // Detalles de la notificación para Windows
-    WindowsNotificationDetails windowsPlatformChannelSpecifics =
-        const WindowsNotificationDetails();
-
     // Detalles generales para todos los sistemas
-    NotificationDetails platformChannelSpecifics = NotificationDetails(
+    const NotificationDetails platformChannelSpecifics = NotificationDetails(
       android: androidPlatformChannelSpecifics,
       iOS: darwinPlatformChannelSpecifics,
       macOS: darwinPlatformChannelSpecifics,
       linux: linuxPlatformChannelSpecifics,
-      windows: windowsPlatformChannelSpecifics,
     );
 
     // Convertir DateTime a TZDateTime
@@ -200,6 +192,8 @@ class NotificationsService {
       platformChannelSpecifics,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       payload: payload,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
     );
   }
 

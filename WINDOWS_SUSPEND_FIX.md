@@ -67,6 +67,77 @@ void resumeService() {
 
 ### Cambios en `lib/services/websocket_service.dart`
 
+#### 1. Watchdog Timer (Detección de Estado Zombie)
+
+```dart
+// Nuevos campos para detección de estado zombie
+Timer? _watchdogTimer;
+DateTime _lastSuccessfulActivity = DateTime.now();
+bool _isSystemSuspending = false;
+Function? onNeedRestart; // Callback para notificar que se necesita reinicio
+
+// Iniciar watchdog (verifica cada 2 minutos)
+void _startWatchdog() {
+  _watchdogTimer?.cancel();
+  _watchdogTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
+    if (_isDisposed || _isSystemSuspending) return;
+    
+    final now = DateTime.now();
+    final inactiveDuration = now.difference(_lastSuccessfulActivity);
+    
+    // Si han pasado más de 5 minutos sin actividad Y deberíamos estar conectados
+    if (inactiveDuration.inMinutes >= 5 && _shouldAutoReconnect) {
+      print('⚠️ [WATCHDOG] Estado zombie detectado: ${inactiveDuration.inMinutes}min sin actividad');
+      
+      // Si lleva más de 10 minutos, es crítico
+      if (inactiveDuration.inMinutes >= 10) {
+        print('🚨 [WATCHDOG] Estado zombie CRÍTICO - Notificando necesidad de reinicio');
+        onNeedRestart?.call();
+      } else {
+        // Intentar recuperación automática
+        print('🔧 [WATCHDOG] Intentando recuperación automática...');
+        _emergencyCleanup();
+      }
+    }
+  });
+}
+
+// Limpieza de emergencia para recuperación
+void _emergencyCleanup() {
+  print('🧹 [EMERGENCY] Iniciando limpieza de emergencia...');
+  
+  try {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+    _connectionCheckTimer?.cancel();
+    _connectionCheckTimer = null;
+    
+    _channel?.sink?.close();
+    _channel = null;
+    
+    _isConnected = false;
+    _isConnecting = false;
+    _reconnectAttempts = 0;
+    
+    print('✅ [EMERGENCY] Limpieza completada - Intentando reconexión...');
+    
+    if (_token != null && _shouldAutoReconnect) {
+      Future.delayed(const Duration(seconds: 2), () {
+        if (!_isDisposed) {
+          _connect();
+        }
+      });
+    }
+  } catch (e) {
+    print('❌ [EMERGENCY] Error durante limpieza: $e');
+  }
+}
+```
+
+#### 2. Gestión de Suspensión Mejorada
+
 ```dart
 void onAppPaused() {
   _isInBackground = true;
@@ -79,6 +150,10 @@ void onAppPaused() {
     _heartbeatTimer = null;
     _connectionCheckTimer?.cancel();
     _connectionCheckTimer = null;
+    _watchdogTimer?.cancel(); // ← NUEVO: Cancelar watchdog
+    _watchdogTimer = null;
+    
+    _isSystemSuspending = true; // ← NUEVO: Marcar como suspendiendo
   }
 }
 
@@ -96,12 +171,95 @@ void onAppResumed() {
     });
   } else if (_isConnected && Platform.isWindows) {
     // Reiniciar timers
+    _isSystemSuspending = false; // ← NUEVO: Limpiar flag de suspensión
+    _lastSuccessfulActivity = DateTime.now(); // ← NUEVO: Actualizar actividad
     _startHeartbeat();
+    _startWatchdog(); // ← NUEVO: Reiniciar watchdog
+  }
+}
+```
+
+#### 3. Registro de Actividad
+
+```dart
+// Actualizar actividad en cada mensaje recibido
+void _addMessage(String message) {
+  _messages.add(message);
+  _lastSuccessfulActivity = DateTime.now(); // ← NUEVO
+  notifyListeners();
+}
+
+// Actualizar actividad en conexión exitosa
+Future<void> _connect() async {
+  // ... código de conexión ...
+  
+  if (connected) {
+    _isConnected = true;
+    _lastSuccessfulActivity = DateTime.now(); // ← NUEVO
+    _startHeartbeat();
+    _startWatchdog(); // ← NUEVO
   }
 }
 ```
 
 ### Cambios en `lib/main.dart`
+
+#### 1. Callback de Reinicio (onNeedRestart)
+
+```dart
+void _setupAutoPrint() {
+  if (!mounted) return;
+  
+  final webSocketService = Provider.of<WebSocketService>(context, listen: false);
+  
+  // Configurar callback para notificar cuando se necesita reiniciar
+  webSocketService.onNeedRestart = () {
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange),
+              SizedBox(width: 8),
+              Text('Reinicio Requerido'),
+            ],
+          ),
+          content: const Text(
+            'La conexión con el servidor ha dejado de responder. '
+            'Por favor, reinicia la aplicación para restablecer la conexión.\n\n'
+            'Esto puede ocurrir después de que la laptop entre en suspensión.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+                  windowManager.close();
+                } else {
+                  SystemNavigator.pop();
+                }
+              },
+              child: const Text('Reiniciar Ahora'),
+            ),
+          ],
+        );
+      },
+    );
+  };
+  
+  // ... resto del código ...
+}
+```
+
+#### 2. Gestión del Ciclo de Vida
 
 ```dart
 // Flag para proteger windowManager/trayManager
@@ -156,6 +314,51 @@ void onTrayMenuItemClick(MenuItem item) {
 ---
 
 ## 🔄 Flujo de Protección
+
+### Flujo Normal (Con Watchdog Timer)
+
+```
+┌─────────────────────────────────┐
+│ App funcionando normalmente     │
+│ Watchdog verifica cada 2 min    │
+└────────────┬────────────────────┘
+             ↓
+┌─────────────────────────────────┐
+│ Cada mensaje recibido:          │
+│ _lastSuccessfulActivity = now() │
+└────────────┬────────────────────┘
+             ↓
+┌─────────────────────────────────┐
+│ Watchdog verifica:              │
+│ ¿Más de 5 min sin actividad?    │
+└────────────┬────────────────────┘
+             ↓
+         SÍ / NO
+         ↙    ↘
+    ┌────┐  ┌────────────────────┐
+    │ SÍ │  │ NO: Todo normal    │
+    └──┬─┘  │ Continuar          │
+       ↓    └────────────────────┘
+┌────────────────────────────────┐
+│ ¿Más de 10 min sin actividad?  │
+└────────┬───────────────────────┘
+         ↓
+     SÍ / NO
+     ↙    ↘
+┌─────┐  ┌──────────────────────┐
+│ SÍ  │  │ NO: Recuperación     │
+└──┬──┘  │ automática           │
+   ↓     │ _emergencyCleanup()  │
+┌──────────────────────────────┐
+│ 🚨 CRÍTICO                    │
+│ Mostrar diálogo al usuario   │
+│ "Reinicio Requerido"         │
+│                              │
+│ [Cancelar] [Reiniciar Ahora] │
+└──────────────────────────────┘
+```
+
+### Flujo de Suspensión (Con Watchdog Timer)
 
 ```
 ┌─────────────────────────────────┐
@@ -306,25 +509,39 @@ PrinterService.resumeService()
 
 ## 🛡️ Protecciones Implementadas
 
-### 1. Timer de Impresoras
+### 1. Watchdog Timer (NUEVO)
+- ✅ Verifica actividad cada 2 minutos
+- ✅ Detecta estado zombie (5+ minutos sin actividad)
+- ✅ Recuperación automática para estados moderados
+- ✅ Notificación de reinicio para estados críticos (10+ minutos)
+- ✅ Pausado durante suspensión del sistema
+- ✅ Reiniciado automáticamente al despertar
+
+### 2. Timer de Impresoras
 - ✅ Cancelado durante suspensión
 - ✅ Reiniciado 3s después de despertar
 - ✅ Protección `_isPaused` en todas las verificaciones
 
-### 2. Timers de WebSocket
+### 3. Timers de WebSocket
 - ✅ Cancelados durante suspensión (Windows)
 - ✅ Reiniciados al despertar
 - ✅ Verificación `_isDisposed` en callbacks
+- ✅ Registro de actividad exitosa
 
-### 3. window_manager / tray_manager
+### 4. window_manager / tray_manager
 - ✅ Bloqueados con `_isSystemSuspended`
 - ✅ Try-catch en todas las llamadas
 - ✅ Logs detallados de errores
 
-### 4. Todas las operaciones FFI
+### 5. Todas las operaciones FFI
 - ✅ Try-catch para capturar errores
 - ✅ No propagan crashes
 - ✅ Logs para debugging
+
+### 6. UI de Usuario (NUEVO)
+- ✅ Diálogo informativo cuando se detecta estado zombie
+- ✅ Opción de reinicio automático con un clic
+- ✅ Prevención de múltiples diálogos
 
 ---
 
@@ -333,6 +550,9 @@ PrinterService.resumeService()
 ✅ **NO más ACCESS_VIOLATION durante suspensión**  
 ✅ **App sobrevive a ciclos suspender/despertar**  
 ✅ **Reconexión automática de WebSocket**  
+✅ **Detección automática de estado zombie** (NUEVO)  
+✅ **Recuperación automática sin intervención del usuario** (NUEVO)  
+✅ **Notificación al usuario en casos críticos** (NUEVO)  
 ✅ **Impresoras siguen funcionando**  
 ✅ **Event Viewer limpio (sin errores 1000)**  
 ✅ **Experiencia de usuario perfecta**
@@ -367,6 +587,6 @@ Si agregas **nuevos plugins nativos**, recuerda:
 
 ---
 
-**Fecha:** 2025-12-12  
-**Versión:** 1.0.0  
-**Estado:** ✅ RESUELTO
+**Fecha:** 2025-12-13  
+**Versión:** 2.0.0 (Watchdog Timer añadido)  
+**Estado:** ✅ RESUELTO + AUTO-RECUPERACIÓN

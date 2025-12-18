@@ -7,7 +7,9 @@ import 'package:anfibius_uwu/services/print_job_service.dart';
 import 'package:anfibius_uwu/services/printer_service.dart';
 import 'package:anfibius_uwu/services/startup_service.dart';
 import 'package:anfibius_uwu/services/websocket_service.dart';
+import 'package:anfibius_uwu/services/logger_service.dart';
 import 'package:anfibius_uwu/settings_screen.dart';
+import 'package:anfibius_uwu/logs_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -54,15 +56,30 @@ Future<void> _mainInit(List<String> args) async {
   FlutterError.onError = (FlutterErrorDetails details) {
     print('❌ [${DateTime.now()}] Flutter Error: ${details.exception}');
     print('📋 StackTrace: ${details.stack}');
+    
+    // También guardar en archivo de log si está disponible
+    try {
+      logger.error('Flutter Error: ${details.exception}', stackTrace: details.stack);
+    } catch (e) {
+      // Si falla el logger, solo mostrar en consola
+    }
     // NO dejar que la app crashee - solo loggear el error
   };
 
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 🆕 Inicializar servicio de logging
+  try {
+    await logger.init();
+    logger.success('Logger Service inicializado');
+  } catch (e) {
+    print('❌ Error inicializando Logger Service: $e');
+  }
+
   // Inicializar servicio de primer plano en Android
   if (Platform.isAndroid) {
     PrinterForegroundService.initForegroundTask();
-    print('✅ Servicio de primer plano inicializado para Android');
+    logger.info('Servicio de primer plano inicializado para Android');
   }
 
   // Solo ejecutar funcionalidades de escritorio en plataformas compatibles
@@ -514,6 +531,54 @@ class _MyHomePageState extends State<MyHomePage>
     );
     final printerService = Provider.of<PrinterService>(context, listen: false);
 
+    // Configurar el callback para notificar cuando se necesita reiniciar (zombie state)
+    webSocketService.onNeedRestart = () {
+      // 🛡️ Verificar que el widget sigue montado antes de mostrar el diálogo
+      if (!mounted) return;
+      
+      // Mostrar diálogo informando al usuario que la app necesita reiniciarse
+      showDialog(
+        context: context,
+        barrierDismissible: false, // No permitir cerrar tocando fuera
+        builder: (BuildContext dialogContext) {
+          return AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                SizedBox(width: 8),
+                Text('Reinicio Requerido'),
+              ],
+            ),
+            content: const Text(
+              'La conexión con el servidor ha dejado de responder. '
+              'Por favor, reinicia la aplicación para restablecer la conexión.\n\n'
+              'Esto puede ocurrir después de que la laptop entre en suspensión.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                },
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  // Cerrar la aplicación para forzar reinicio
+                  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+                    windowManager.close();
+                  } else {
+                    SystemNavigator.pop();
+                  }
+                },
+                child: const Text('Reiniciar Ahora'),
+              ),
+            ],
+          );
+        },
+      );
+    };
+    
     // Configurar el callback para imprimir automáticamente cuando llegue un mensaje
     webSocketService.onNewMessage = (String jsonMessage) async {
       // 🛡️ PROTECCIÓN: Envolver TODO en try-catch para evitar crashes
@@ -700,6 +765,10 @@ class _MyHomePageState extends State<MyHomePage>
       trayManager.removeListener(this);
       windowManager.removeListener(this);
     }
+    
+    // 🆕 Cerrar el logger service
+    logger.dispose();
+    
     super.dispose();
   }
 
@@ -823,6 +892,20 @@ class _MyHomePageState extends State<MyHomePage>
         ),
         surfaceTintColor: Colors.lightGreen,
         actions: [
+          // Botón para ver logs
+          IconButton(
+            icon: const Icon(Icons.article_outlined),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const LogsScreen(),
+                ),
+              );
+            },
+            tooltip: 'Ver logs del sistema',
+          ),
+          // Botón de tema
           IconButton(
             icon: Icon(
               themeService.isSystemTheme
@@ -842,6 +925,37 @@ class _MyHomePageState extends State<MyHomePage>
       floatingActionButton: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
+          // Botón de reconexión manual
+          Consumer<WebSocketService>(
+            builder: (context, webSocketService, child) {
+              // Solo mostrar si no está conectado
+              if (!webSocketService.isConnected) {
+                return FloatingActionButton(
+                  onPressed: () {
+                    print('🔄 [${DateTime.now()}] Reconexión manual solicitada por el usuario');
+                    
+                    // Mostrar mensaje de carga
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Reconectando...'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                    
+                    // Forzar reconexión
+                    webSocketService.reconnect();
+                  },
+                  heroTag: 'reconnect_websocket',
+                  tooltip: 'Reconectar al servidor',
+                  backgroundColor: Colors.orange,
+                  child: const Icon(Icons.wifi_off),
+                );
+              } else {
+                return const SizedBox.shrink();
+              }
+            },
+          ),
+          const SizedBox(height: 16),
           FloatingActionButton(
             onPressed: () {
               Navigator.push(

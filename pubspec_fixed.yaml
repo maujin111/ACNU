@@ -1,0 +1,93 @@
+name: anfibius_uwu
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.7.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI y funcionalidad básica
+  cupertino_icons: ^1.0.8
+  provider: ^6.1.5
+  carousel_slider: ^5.0.0
+  
+  # Networking
+  web_socket_channel: ^3.0.3
+  
+  # Impresión
+  flutter_esc_pos_utils: ^1.0.1
+  flutter_pos_printer_platform_image_3: ^1.2.4
+  
+  # Almacenamiento local
+  shared_preferences: ^2.5.3
+  path_provider: ^2.1.1
+  
+  # Notificaciones (incluye soporte para todas las plataformas)
+  flutter_local_notifications: ^17.2.3  # ← Versión estable (bajada de 19.2.1)
+  timezone: ^0.10.1
+  
+  # Utilidades
+  package_info_plus: ^8.3.0
+  intl: ^0.19.0
+  share_plus: ^7.2.2  # ← Versión estable (bajada de 10.1.2)
+  
+  # Android - Mantener activo en background
+  flutter_foreground_task: ^8.0.0
+  wakelock_plus: ^1.2.0
+  permission_handler: ^11.3.1
+  
+  # Desktop - Gestión de ventanas
+  window_manager: ^0.5.1
+  desktop_multi_window: ^0.2.1
+  launch_at_startup: ^0.5.1
+  
+  # Desktop - System tray (SOLO tray_manager, removido system_tray)
+  tray_manager: ^0.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.3
+  msix: ^3.16.7
+
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "assets/icon/icon.png"
+  min_sdk_android: 21
+  web:
+    generate: true
+    image_path: "assets/icon/icon.png"
+  windows:
+    generate: true
+    image_path: "assets/icon/app_icon.ico"
+    icon_size: 48
+  macos:
+    generate: true
+    image_path: "assets/icon/icon.png"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - "assets/"
+    - "assets/icon/icon.png"
+    - "assets/icon/icon.ico"
+    - "assets/icon/app_icon.ico"
+    - "assets/icon/OIP.png"
+
+msix_config:
+  display_name: Anfibius Web Utility
+  publisher_display_name: Corporacion Anfibius
+  identity_name: com.corporacion.anfibius
+  msix_version: 1.0.0.0
+  logo_path: assets/icon/icon.png
+  capabilities: 'internetClient,removableStorage'
+  store: true
+  publisher: CN=f7cdbea5-33a8-4997-b46f-97d9b0d40ef4
