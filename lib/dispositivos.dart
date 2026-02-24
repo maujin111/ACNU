@@ -1,3 +1,120 @@
+import 'package:anfibius_uwu/services/fingerprint_reader_service.dart';
+  FingerprintDevice? _selectedFingerprintDevice;
+  bool _isListening = false;
+  String _fingerStatus = '';
+    // Escaneo inicial de lectores biométricos
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final fingerprintService = Provider.of<FingerprintReaderService>(context, listen: false);
+      await fingerprintService.scanDevices();
+      setState(() {});
+    });
+  final fingerprintService = Provider.of<FingerprintReaderService>(context);
+    // UI de lectores biométricos
+    Widget _buildFingerprintSection() {
+      return Card(
+        margin: const EdgeInsets.all(8.0),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Lectores biométricos', style: Theme.of(context).textTheme.headlineSmall),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Escanear'),
+                    onPressed: () async {
+                      await fingerprintService.scanDevices();
+                      setState(() {});
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (fingerprintService.availableDevices.isEmpty)
+                const Text('No se detectaron lectores.'),
+              if (fingerprintService.availableDevices.isNotEmpty)
+                Column(
+                  children: [
+                    ...fingerprintService.availableDevices.map((dev) => ListTile(
+                          title: Text(dev.name),
+                          subtitle: Text(dev.type),
+                          leading: Radio<FingerprintDevice>(
+                            value: dev,
+                            groupValue: _selectedFingerprintDevice,
+                            onChanged: (val) {
+                              setState(() {
+                                _selectedFingerprintDevice = val;
+                                fingerprintService.selectDevice(val!);
+                              });
+                            },
+                          ),
+                          trailing: _selectedFingerprintDevice == dev && !_isListening
+                              ? ElevatedButton.icon(
+                                  icon: const Icon(Icons.play_arrow),
+                                  label: const Text('Escuchar'),
+                                  onPressed: () async {
+                                    setState(() { _isListening = true; _fingerStatus = 'Escuchando...'; });
+                                    await fingerprintService.startListening();
+                                  },
+                                )
+                              : _selectedFingerprintDevice == dev && _isListening
+                                  ? ElevatedButton.icon(
+                                      icon: const Icon(Icons.stop),
+                                      label: const Text('Detener'),
+                                      onPressed: () {
+                                        fingerprintService.stopListening();
+                                        setState(() { _isListening = false; _fingerStatus = ''; });
+                                      },
+                                    )
+                                  : null,
+                        )),
+                    if (_fingerStatus.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Text(_fingerStatus, style: const TextStyle(color: Colors.blue)),
+                      ),
+                    const SizedBox(height: 10),
+                    if (_selectedFingerprintDevice != null)
+                      Row(
+                        children: [
+                          ElevatedButton.icon(
+                            icon: const Icon(Icons.fingerprint),
+                            label: const Text('Enrolar'),
+                            onPressed: () async {
+                              // Simular captura y enrolar
+                              setState(() { _fingerStatus = 'Coloque el dedo para enrolar...'; });
+                              fingerprintService.onFingerprintRead = (data) async {
+                                setState(() { _fingerStatus = 'Enrolando...'; });
+                                final ok = await fingerprintService.enrollFingerprint(const Base64Decoder().convert(data));
+                                setState(() { _fingerStatus = ok ? 'Enrolamiento exitoso' : 'Error al enrolar'; });
+                              };
+                            },
+                          ),
+                          const SizedBox(width: 10),
+                          ElevatedButton.icon(
+                            icon: const Icon(Icons.verified_user),
+                            label: const Text('Validar'),
+                            onPressed: () async {
+                              setState(() { _fingerStatus = 'Coloque el dedo para validar...'; });
+                              fingerprintService.onFingerprintRead = (data) async {
+                                setState(() { _fingerStatus = 'Validando...'; });
+                                final ok = await fingerprintService.validateFingerprint(const Base64Decoder().convert(data));
+                                setState(() { _fingerStatus = ok ? 'Huella válida' : 'No coincide'; });
+                              };
+                            },
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      );
+    }
 import 'dart:convert';
 import 'package:anfibius_uwu/services/print_job_service.dart';
 import 'package:anfibius_uwu/services/printer_service.dart';
@@ -91,9 +208,9 @@ class _DispositivosState extends State<Dispositivos> {
             padding: EdgeInsets.zero,
             child: Column(
               children: [
-                // Botón de acción principal
                 const SizedBox(height: 20),
-
+                _buildFingerprintSection(),
+                const SizedBox(height: 20),
                 // Estado del WebSocket
                 Card(
                   margin: const EdgeInsets.all(8.0),

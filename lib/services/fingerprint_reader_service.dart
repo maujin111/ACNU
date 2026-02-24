@@ -1,3 +1,96 @@
+  // Habilita la escucha continua del lector seleccionado
+  bool _listening = false;
+  Future<void> startListening() async {
+    if (_sdkType == 'zkteco' && _zktecoSDK != null && _selectedDevice != null) {
+      final initResult = _zktecoSDK!.init();
+      if (initResult != 0) return;
+      final hDevice = _zktecoSDK!.openDevice(int.parse(_selectedDevice!.id.split('_').last));
+      if (hDevice == ffi.nullptr) return;
+      final hDB = _zktecoSDK!.dbInit();
+      if (hDB == ffi.nullptr) {
+        _zktecoSDK!.closeDevice(hDevice);
+        return;
+      }
+      _listening = true;
+      while (_listening) {
+        final fpWidth = 256, fpHeight = 288;
+        final imagePtr = ffi.calloc<ffi.Uint8>(fpWidth*fpHeight);
+        final templatePtr = ffi.calloc<ffi.Uint8>(2048);
+        final lengthPtr = ffi.calloc<ffi.Int32>();
+        final capResult = _zktecoSDK!.acquireFingerprint(hDevice, imagePtr, templatePtr, lengthPtr);
+        if (capResult == 0) {
+          final length = lengthPtr.value;
+          final template = templatePtr.asTypedList(length);
+          onFingerprintRead?.call(base64Encode(template));
+        }
+        ffi.calloc.free(imagePtr);
+        ffi.calloc.free(templatePtr);
+        ffi.calloc.free(lengthPtr);
+        await Future.delayed(Duration(milliseconds: 500));
+      }
+      _zktecoSDK!.dbFree(hDB);
+      _zktecoSDK!.closeDevice(hDevice);
+      _zktecoSDK!.terminate();
+    }
+  }
+
+  void stopListening() {
+    _listening = false;
+  }
+
+  // Enrolar huella en DB ZKTeco
+  Future<bool> enrollFingerprint(Uint8List template) async {
+    if (_sdkType == 'zkteco' && _zktecoSDK != null && _selectedDevice != null) {
+      final initResult = _zktecoSDK!.init();
+      if (initResult != 0) return false;
+      final hDevice = _zktecoSDK!.openDevice(int.parse(_selectedDevice!.id.split('_').last));
+      if (hDevice == ffi.nullptr) return false;
+      final hDB = _zktecoSDK!.dbInit();
+      if (hDB == ffi.nullptr) {
+        _zktecoSDK!.closeDevice(hDevice);
+        return false;
+      }
+      final templatePtr = ffi.calloc<ffi.Uint8>(template.length);
+      final templateList = templatePtr.asTypedList(template.length);
+      templateList.setAll(0, template);
+      final ret = _zktecoSDK!.dbAdd(hDB, 1, templatePtr); // FID fijo para demo
+      ffi.calloc.free(templatePtr);
+      _zktecoSDK!.dbFree(hDB);
+      _zktecoSDK!.closeDevice(hDevice);
+      _zktecoSDK!.terminate();
+      return ret == 0;
+    }
+    return false;
+  }
+
+  // Validar huella contra DB ZKTeco
+  Future<bool> validateFingerprint(Uint8List template) async {
+    if (_sdkType == 'zkteco' && _zktecoSDK != null && _selectedDevice != null) {
+      final initResult = _zktecoSDK!.init();
+      if (initResult != 0) return false;
+      final hDevice = _zktecoSDK!.openDevice(int.parse(_selectedDevice!.id.split('_').last));
+      if (hDevice == ffi.nullptr) return false;
+      final hDB = _zktecoSDK!.dbInit();
+      if (hDB == ffi.nullptr) {
+        _zktecoSDK!.closeDevice(hDevice);
+        return false;
+      }
+      final templatePtr = ffi.calloc<ffi.Uint8>(template.length);
+      final templateList = templatePtr.asTypedList(template.length);
+      templateList.setAll(0, template);
+      final fidPtr = ffi.calloc<ffi.Int32>();
+      final scorePtr = ffi.calloc<ffi.Int32>();
+      final ret = _zktecoSDK!.dbIdentify(hDB, templatePtr, fidPtr, scorePtr);
+      ffi.calloc.free(templatePtr);
+      ffi.calloc.free(fidPtr);
+      ffi.calloc.free(scorePtr);
+      _zktecoSDK!.dbFree(hDB);
+      _zktecoSDK!.closeDevice(hDevice);
+      _zktecoSDK!.terminate();
+      return ret == 0;
+    }
+    return false;
+  }
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
@@ -35,7 +128,7 @@ class FingerprintDevice {
 
 class FingerprintReaderService extends ChangeNotifier {
   static const String _baseUrl =
-      'http://localhost:8080'; // Replace with your actual API base URL
+      'https://web.anfibius.net:8181/anfibiusBack/api'; // Replace with your actual API base URL
   AuthService _authService;
 
   // Dispositivos disponibles (simulados por ahora)
@@ -92,8 +185,44 @@ class FingerprintReaderService extends ChangeNotifier {
     _authService = newAuthService;
   }
 
-  // Método para seleccionar el dispositivo y SDK automáticamente
-  // (Eliminado método duplicado selectDevice)
+
+  // Escanea y lista dispositivos disponibles (ZKTeco y otros)
+  Future<void> scanDevices() async {
+    _availableDevices.clear();
+    // ZKTeco
+    try {
+      _zktecoSDK ??= ZKTecoSDK();
+      final initResult = _zktecoSDK!.init();
+      if (initResult == 0) {
+        final devCount = _zktecoSDK!.getDeviceCount();
+        for (int i = 0; i < devCount; i++) {
+          _availableDevices.add(FingerprintDevice(
+            id: 'zkteco_$i',
+            name: 'ZKTeco ZK9500 #$i',
+            type: 'ZKTeco',
+          ));
+        }
+        _zktecoSDK!.terminate();
+      }
+    } catch (e) {
+      developer.log('Error escaneando ZKTeco: $e');
+    }
+    // TODO: Agregar otros SDKs/dispositivos si es necesario
+    notifyListeners();
+  }
+
+  // Selecciona el dispositivo y SDK automáticamente
+  void selectDevice(FingerprintDevice device) {
+    _selectedDevice = device;
+    if (device.type.toLowerCase().contains('zkteco')) {
+      _sdkType = 'zkteco';
+      _zktecoSDK ??= ZKTecoSDK();
+    } else if (device.type.toLowerCase().contains('hikvision')) {
+      _sdkType = 'hikvision';
+      _hikvisionSDK ??= HikvisionSDK();
+    }
+    notifyListeners();
+  }
 
   // Método para iniciar el proceso de registro de huella para un empleado específico
   void startFingerprintRegistration(int employeeId) async {
@@ -103,19 +232,62 @@ class FingerprintReaderService extends ChangeNotifier {
     );
 
     if (_sdkType == 'zkteco' && _zktecoSDK != null) {
-      final result = _zktecoSDK!.zkf_init();
-      developer.log('ZKTeco zkf_init result: $result');
-      // Captura de huella con ZKTeco
-      final imagePtr = ffi.calloc<ffi.Uint8>(512*512); // Tamaño típico de imagen
-      final templatePtr = ffi.calloc<ffi.Uint8>(2048); // Tamaño típico de template
+      // 1. Inicializar SDK
+      final initResult = _zktecoSDK!.init();
+      developer.log('ZKTeco Init result: $initResult');
+      if (initResult != 0) {
+        onRegistrationStatusChange?.call(false, 'Error inicializando SDK ZKTeco');
+        return;
+      }
+      // 2. Contar dispositivos
+      final devCount = _zktecoSDK!.getDeviceCount();
+      developer.log('ZKTeco Device Count: $devCount');
+      if (devCount <= 0) {
+        onRegistrationStatusChange?.call(false, 'No se detectó lector ZKTeco');
+        _zktecoSDK!.terminate();
+        return;
+      }
+      // 3. Abrir dispositivo
+      final hDevice = _zktecoSDK!.openDevice(0);
+      if (hDevice == ffi.nullptr) {
+        onRegistrationStatusChange?.call(false, 'No se pudo abrir el lector ZKTeco');
+        _zktecoSDK!.terminate();
+        return;
+      }
+      // 4. Inicializar DB
+      final hDB = _zktecoSDK!.dbInit();
+      if (hDB == ffi.nullptr) {
+        onRegistrationStatusChange?.call(false, 'No se pudo inicializar DB ZKTeco');
+        _zktecoSDK!.closeDevice(hDevice);
+        _zktecoSDK!.terminate();
+        return;
+      }
+      // 5. Obtener parámetros de imagen
+      final paramValue = ffi.calloc<ffi.Uint8>(4);
+      final sizePtr = ffi.calloc<ffi.Int32>();
+      sizePtr.value = 4;
+      int fpWidth = 0, fpHeight = 0;
+      if (_zktecoSDK!.getParameters(hDevice, 1, paramValue, sizePtr) == 0) {
+        fpWidth = paramValue[0] | (paramValue[1] << 8) | (paramValue[2] << 16) | (paramValue[3] << 24);
+      }
+      if (_zktecoSDK!.getParameters(hDevice, 2, paramValue, sizePtr) == 0) {
+        fpHeight = paramValue[0] | (paramValue[1] << 8) | (paramValue[2] << 16) | (paramValue[3] << 24);
+      }
+      ffi.calloc.free(paramValue);
+      ffi.calloc.free(sizePtr);
+      if (fpWidth == 0 || fpHeight == 0) {
+        fpWidth = 256; fpHeight = 288; // fallback
+      }
+      // 6. Captura de huella
+      final imagePtr = ffi.calloc<ffi.Uint8>(fpWidth*fpHeight);
+      final templatePtr = ffi.calloc<ffi.Uint8>(2048);
       final lengthPtr = ffi.calloc<ffi.Int32>();
       try {
-        final capResult = _zktecoSDK!.zkf_acquire_fingerprint(imagePtr, templatePtr, lengthPtr);
-        developer.log('ZKTeco zkf_acquire_fingerprint result: $capResult');
+        final capResult = _zktecoSDK!.acquireFingerprint(hDevice, imagePtr, templatePtr, lengthPtr);
+        developer.log('ZKTeco acquireFingerprint result: $capResult');
         if (capResult == 0) {
           final length = lengthPtr.value;
           final template = templatePtr.asTypedList(length);
-          // Notificar éxito y pasar template como base64
           onFingerprintRead?.call(base64Encode(template));
           onRegistrationSuccess?.call();
         } else {
@@ -125,6 +297,9 @@ class FingerprintReaderService extends ChangeNotifier {
         ffi.calloc.free(imagePtr);
         ffi.calloc.free(templatePtr);
         ffi.calloc.free(lengthPtr);
+        _zktecoSDK!.dbFree(hDB);
+        _zktecoSDK!.closeDevice(hDevice);
+        _zktecoSDK!.terminate();
       }
       notifyListeners();
       return;
