@@ -1,0 +1,9 @@
+# Copia las DLLs de ZKTeco según la arquitectura
+file(GLOB ZKTECO_DLLS_X64 "${CMAKE_SOURCE_DIR}/dll/x64/*.dll")
+file(GLOB ZKTECO_DLLS_X86 "${CMAKE_SOURCE_DIR}/dll/x86/*.dll")
+
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+  install(FILES ${ZKTECO_DLLS_X64} DESTINATION "${CMAKE_INSTALL_PREFIX}" COMPONENT Runtime)
+else()
+  install(FILES ${ZKTECO_DLLS_X86} DESTINATION "${CMAKE_INSTALL_PREFIX}" COMPONENT Runtime)
+endif()

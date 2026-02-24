@@ -54,9 +54,13 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 add_subdirectory("runner")
 
 
+
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
 include(flutter/generated_plugins.cmake)
+
+# Copiar DLLs de ZKTeco al bundle de salida según arquitectura
+include(${CMAKE_SOURCE_DIR}/copy_zkteco_dlls_arch.cmake)
 
 
 # === Installation ===

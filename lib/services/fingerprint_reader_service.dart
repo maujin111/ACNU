@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http; // Import for http
 import 'package:anfibius_uwu/services/auth_service.dart';
 import '../services/config_service.dart';
 import '../services/hikvision_sdk.dart' show HikvisionSDK, HikvisionConstants;
+import '../services/zkteco_sdk.dart';
 import '../services/tts_service.dart';
 
 // Clase simple para representar un dispositivo
@@ -50,9 +51,12 @@ class FingerprintReaderService extends ChangeNotifier {
   Timer? _scanTimer;
   Timer? _connectionCheckTimer;
 
-  // SDK de Hikvision
+  // SDKs
   int _currentDeviceID = -1;
   int? _currentEmployeeIdForRegistration;
+  HikvisionSDK? _hikvisionSDK;
+  ZKTecoSDK? _zktecoSDK;
+  String? _sdkType; // 'hikvision' o 'zkteco'
 
   // Última imagen de huella capturada
   Uint8List? _lastFingerprintImage;
@@ -87,6 +91,19 @@ class FingerprintReaderService extends ChangeNotifier {
     _authService = newAuthService;
   }
 
+  // Método para seleccionar el dispositivo y SDK automáticamente
+  void selectDevice(FingerprintDevice device) {
+    _selectedDevice = device;
+    if (device.type.toLowerCase().contains('zkteco')) {
+      _sdkType = 'zkteco';
+      _zktecoSDK ??= ZKTecoSDK();
+    } else if (device.type.toLowerCase().contains('hikvision')) {
+      _sdkType = 'hikvision';
+      _hikvisionSDK ??= HikvisionSDK();
+    }
+    notifyListeners();
+  }
+
   // Método para iniciar el proceso de registro de huella para un empleado específico
   void startFingerprintRegistration(int employeeId) async {
     _currentEmployeeIdForRegistration = employeeId;
@@ -94,11 +111,35 @@ class FingerprintReaderService extends ChangeNotifier {
       '🚀 Iniciando registro de huella para empleado ID: $employeeId',
     );
 
-    // Configurar SDK para modo predeterminado (valor 0)
-    // Nota: El SDK de Hikvision valores 0-4:
-    // 0 = modo predeterminado (2-4 capturas automáticas) <- USAREMOS ESTE
-    // 1-4 = número específico de capturas (pero el dispositivo rechaza estos valores)
-    // Necesitamos cerrar y reabrir el dispositivo con la configuración correcta
+    if (_sdkType == 'zkteco' && _zktecoSDK != null) {
+      final result = _zktecoSDK!.zkf_init();
+      developer.log('ZKTeco zkf_init result: $result');
+      // Captura de huella con ZKTeco
+      final imagePtr = calloc<Uint8>(512*512); // Tamaño típico de imagen
+      final templatePtr = calloc<Uint8>(2048); // Tamaño típico de template
+      final lengthPtr = calloc<Int32>();
+      try {
+        final capResult = _zktecoSDK!.zkf_acquire_fingerprint(imagePtr, templatePtr, lengthPtr);
+        developer.log('ZKTeco zkf_acquire_fingerprint result: $capResult');
+        if (capResult == 0) {
+          final length = lengthPtr.value;
+          final template = templatePtr.asTypedList(length);
+          // Notificar éxito y pasar template como base64
+          onFingerprintRead?.call(base64Encode(template));
+          onRegistrationSuccess?.call();
+        } else {
+          onRegistrationStatusChange?.call(false, 'Error capturando huella ZKTeco');
+        }
+      } finally {
+        calloc.free(imagePtr);
+        calloc.free(templatePtr);
+        calloc.free(lengthPtr);
+      }
+      notifyListeners();
+      return;
+    }
+
+    // Configurar SDK para modo predeterminado (valor 0) - Hikvision
     if (_selectedDevice?.type == 'Hikvision SDK' && _isConnected) {
       developer.log(
         '🔄 Reconfigurando dispositivo para modo registro (valor 0)...',
@@ -135,6 +176,12 @@ class FingerprintReaderService extends ChangeNotifier {
   void stopFingerprintRegistration() {
     developer.log('🛑 Deteniendo registro de huella.');
     _currentEmployeeIdForRegistration = null;
+
+    // Detener ZKTeco si corresponde
+    if (_sdkType == 'zkteco' && _zktecoSDK != null) {
+      final result = _zktecoSDK!.zkf_exit();
+      developer.log('ZKTeco zkf_exit result: $result');
+    }
 
     // Limpiar callbacks de registro
     onRegistrationStatusChange = null;
