@@ -13,6 +13,8 @@ class LoggerService {
   File? _currentLogFile;
   IOSink? _logSink;
   String? _currentDate;
+  bool _isRotating = false;
+  Directory? _cachedLogDir;
   final _logBuffer = <String>[];
   Timer? _flushTimer;
   bool _isInitialized = false;
@@ -41,12 +43,16 @@ class LoggerService {
 
   /// Inicializar archivo de log
   Future<void> _initLogFile() async {
+    if (_isRotating) return;
+    _isRotating = true;
+
     try {
       final directory = await _getLogDirectory();
       final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
       
       // Si cambió el día, crear nuevo archivo
       if (_currentDate != today) {
+        // Cerrar archivo anterior si existe (esto llamará a _flushBuffer sin rotar)
         await _closeCurrentFile();
         
         _currentDate = today;
@@ -72,11 +78,15 @@ class LoggerService {
       }
     } catch (e) {
       print('❌ Error inicializando archivo de log: $e');
+    } finally {
+      _isRotating = false;
     }
   }
 
   /// Obtener directorio de logs
   Future<Directory> _getLogDirectory() async {
+    if (_cachedLogDir != null) return _cachedLogDir!;
+
     final appDocDir = await getApplicationDocumentsDirectory();
     final logDir = Directory('${appDocDir.path}/anfibius_logs');
     
@@ -84,6 +94,7 @@ class LoggerService {
       await logDir.create(recursive: true);
     }
     
+    _cachedLogDir = logDir;
     return logDir;
   }
 
@@ -178,10 +189,12 @@ class LoggerService {
     if (_logBuffer.isEmpty) return;
 
     try {
-      // Verificar si cambió el día
-      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      if (_currentDate != today) {
-        await _initLogFile();
+      // Verificar si cambió el día (solo si no estamos ya rotando)
+      if (!_isRotating) {
+        final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+        if (_currentDate != today) {
+          await _initLogFile();
+        }
       }
 
       if (_logSink != null) {
