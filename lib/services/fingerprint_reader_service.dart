@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
-import 'dart:ffi';
+import 'dart:ffi' as ffi;
+import 'package:ffi/ffi.dart' as ffi;
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http; // Import for http
@@ -92,17 +93,7 @@ class FingerprintReaderService extends ChangeNotifier {
   }
 
   // Método para seleccionar el dispositivo y SDK automáticamente
-  void selectDevice(FingerprintDevice device) {
-    _selectedDevice = device;
-    if (device.type.toLowerCase().contains('zkteco')) {
-      _sdkType = 'zkteco';
-      _zktecoSDK ??= ZKTecoSDK();
-    } else if (device.type.toLowerCase().contains('hikvision')) {
-      _sdkType = 'hikvision';
-      _hikvisionSDK ??= HikvisionSDK();
-    }
-    notifyListeners();
-  }
+  // (Eliminado método duplicado selectDevice)
 
   // Método para iniciar el proceso de registro de huella para un empleado específico
   void startFingerprintRegistration(int employeeId) async {
@@ -115,9 +106,9 @@ class FingerprintReaderService extends ChangeNotifier {
       final result = _zktecoSDK!.zkf_init();
       developer.log('ZKTeco zkf_init result: $result');
       // Captura de huella con ZKTeco
-      final imagePtr = calloc<Uint8>(512*512); // Tamaño típico de imagen
-      final templatePtr = calloc<Uint8>(2048); // Tamaño típico de template
-      final lengthPtr = calloc<Int32>();
+      final imagePtr = ffi.calloc<ffi.Uint8>(512*512); // Tamaño típico de imagen
+      final templatePtr = ffi.calloc<ffi.Uint8>(2048); // Tamaño típico de template
+      final lengthPtr = ffi.calloc<ffi.Int32>();
       try {
         final capResult = _zktecoSDK!.zkf_acquire_fingerprint(imagePtr, templatePtr, lengthPtr);
         developer.log('ZKTeco zkf_acquire_fingerprint result: $capResult');
@@ -131,9 +122,9 @@ class FingerprintReaderService extends ChangeNotifier {
           onRegistrationStatusChange?.call(false, 'Error capturando huella ZKTeco');
         }
       } finally {
-        calloc.free(imagePtr);
-        calloc.free(templatePtr);
-        calloc.free(lengthPtr);
+        ffi.calloc.free(imagePtr);
+        ffi.calloc.free(templatePtr);
+        ffi.calloc.free(lengthPtr);
       }
       notifyListeners();
       return;
@@ -802,7 +793,7 @@ class FingerprintReaderService extends ChangeNotifier {
       } else if (msgType == HikvisionConstants.FP_MSG_ENROLL_TIME) {
         // Mensaje de progreso de enrolamiento
         if (_currentEmployeeIdForRegistration != null) {
-          final captureNumber = msgData.cast<Int32>().value;
+          final captureNumber = msgData.cast<ffi.Int32>().value;
           developer.log(
             '📊 Progreso de registro: captura $captureNumber completada',
           );
