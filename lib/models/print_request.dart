@@ -42,7 +42,7 @@ class DirectPrintRequest {
   final String ice;
   final List<FormaPagoDirecta> formaPago;
   final String valor;
-
+  
   DirectPrintRequest({
     required this.piso,
     required this.mesa,
@@ -390,6 +390,7 @@ class PrefacturaData {
   final List<DetallePrefactura> detalles;
   final String? empleado;
   final List<dynamic>? totales;
+  final String? cliente;
 
   PrefacturaData({
     required this.numero,
@@ -410,6 +411,7 @@ class PrefacturaData {
     required this.detalles,
     this.empleado,
     this.totales,
+    this.cliente,
   });
   factory PrefacturaData.fromJson(Map<String, dynamic> json) {
     try {
@@ -491,7 +493,7 @@ class PrefacturaData {
               ? double.tryParse(json['total'].toString()) ?? 0.0
               : 0.0;
       final empleado = json['empleado'] ?? json['empl_nombre'];
-
+      final cliente = json['cliente'] ?? json['clie_nombre'];
       final List<dynamic>? totales = json['totales'];
 
       print(
@@ -520,6 +522,7 @@ class PrefacturaData {
                 .toList(),
         empleado: empleado,
         totales: totales,
+        cliente: cliente
       );
     } catch (e) {
       print('❌ Error al parsear PrefacturaData: $e');
@@ -543,6 +546,7 @@ class PrefacturaData {
         detalles: [],
         empleado: '',
         totales: [],
+        cliente: ''
       );
     }
   }

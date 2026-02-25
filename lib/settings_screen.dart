@@ -17,6 +17,8 @@ class GeneralSettingsScreen extends StatefulWidget {
 
 class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
   final _tokenController = TextEditingController();
+  bool _openDrawer = false;
+  bool _beep = false;
 
   @override
   void initState() {
@@ -36,6 +38,13 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
       if (cleanToken != token) {
         await ConfigService.saveWebSocketToken(cleanToken);
       }
+    }
+
+    // Cargar configuraciones de POS
+    _openDrawer = await ConfigService.loadOpenDrawer();
+    _beep = await ConfigService.loadBeep();
+    if (mounted) {
+      setState(() {});
     }
   }
 
@@ -255,6 +264,39 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
                       ),
                     ],
                   ),
+                ),
+                const Divider(),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Text(
+                      "Impresora POS",
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                  ),
+                ),
+                SwitchListTile(
+                  title: const Text('Abrir cajón de dinero'),
+                  subtitle: const Text('Abrir el cajón después de imprimir'),
+                  value: _openDrawer,
+                  onChanged: (bool value) {
+                    setState(() {
+                      _openDrawer = value;
+                    });
+                    ConfigService.saveOpenDrawer(value);
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Emitir sonido (Beep)'),
+                  subtitle: const Text('La impresora emitirá un sonido al finalizar'),
+                  value: _beep,
+                  onChanged: (bool value) {
+                    setState(() {
+                      _beep = value;
+                    });
+                    ConfigService.saveBeep(value);
+                  },
                 ),
                 const Divider(),
                 Align(

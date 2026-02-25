@@ -477,6 +477,10 @@ class PrintJobService {
         styles: baseStyle,
       );
       bytes += generator.emptyLines(1);
+
+      // Añadir comandos de cajón y sonido si están habilitados
+      //bytes += await _getPostPrintCommands(generator);
+
       // Finalizar
       bytes += generator.cut(mode: PosCutMode.full);
 
@@ -586,6 +590,10 @@ class PrintJobService {
       bytes += generator.text('=== FIN DE PRUEBA ===');
 
       bytes += generator.feed(2);
+
+      // Añadir comandos de cajón y sonido si están habilitados
+      bytes += await _getPostPrintCommands(generator);
+      
       bytes += generator.cut();
 
       print('📋 Bytes generados para impresión: ${bytes.length} bytes');
@@ -791,6 +799,10 @@ class PrintJobService {
       }
 
       bytes += generator.emptyLines(2);
+
+      // Añadir comandos de cajón y sonido si están habilitados
+      //bytes += await _getPostPrintCommands(generator);
+
       bytes += generator.cut(mode: PosCutMode.full);
 
       // Imprimir el número de copias solicitado
@@ -983,6 +995,10 @@ class PrintJobService {
         'Mesero: ${prefacturaData.empleado ?? ""}',
         styles: baseStyle,
       );
+      bytes += generator.text(
+        'Cliente: ${prefacturaData.cliente ?? ""}',
+        styles: baseStyle,
+      );
 
       // Sección para datos del cliente
       bytes += generator.emptyLines(2);
@@ -1012,6 +1028,10 @@ class PrintJobService {
         styles: baseStyle,
       );
       bytes += generator.emptyLines(3);
+
+      // Añadir comandos de cajón y sonido si están habilitados
+      //bytes += await _getPostPrintCommands(generator);
+
       bytes += generator.cut(mode: PosCutMode.full);
 
       // Imprimir el número de copias solicitado
@@ -1354,6 +1374,10 @@ class PrintJobService {
         styles: baseStyle,
       );
       bytes += generator.emptyLines(1);
+
+      // Añadir comandos de cajón y sonido si están habilitados
+      bytes += await _getPostPrintCommands(generator);
+
       bytes += generator.cut(mode: PosCutMode.full);
 
       // Imprimir el número de copias solicitado
@@ -1866,6 +1890,10 @@ class PrintJobService {
         styles: baseStyle,
       );
       bytes += generator.emptyLines(1);
+
+      // Añadir comandos de cajón y sonido si están habilitados
+      bytes += await _getPostPrintCommands(generator);
+
       bytes += generator.cut(mode: PosCutMode.full);
 
       // Imprimir el número de copias solicitado
@@ -1899,6 +1927,28 @@ class PrintJobService {
       print('📋 Stack trace: $stackTrace');
       return false;
     }
+  }
+
+  /// Genera los bytes para los comandos de post-impresión (cajón, sonido)
+  Future<List<int>> _getPostPrintCommands(Generator generator) async {
+    List<int> commands = [];
+    try {
+      final bool openDrawer = await ConfigService.loadOpenDrawer();
+      final bool doBeep = await ConfigService.loadBeep();
+
+      if (openDrawer) {
+        commands += generator.drawer();
+        print('✅ Comando para abrir cajón añadido.');
+      }
+
+      if (doBeep) {
+        commands += generator.beep(n: 2, duration: PosBeepDuration.beep200ms);
+        print('✅ Comando de sonido (beep) añadido.');
+      }
+    } catch (e) {
+      print('❌ Error al obtener comandos de post-impresión: $e');
+    }
+    return commands;
   }
 
   List<int> generateLine({

@@ -317,4 +317,32 @@ class ConfigService {
     final key = '${_printerPaperSizeKey}_$printerName';
     await prefs.remove(key);
   }
+
+  // CONSTANTES PARA COMANDOS POS ADICIONALES
+  static const String _openDrawerKey = 'open_drawer_after_print';
+  static const String _beepKey = 'beep_after_print';
+
+  // Guardar configuración de abrir cajón
+  static Future<void> saveOpenDrawer(bool open) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_openDrawerKey, open);
+  }
+
+  // Cargar configuración de abrir cajón
+  static Future<bool> loadOpenDrawer() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_openDrawerKey) ?? false;
+  }
+
+  // Guardar configuración de emitir sonido
+  static Future<void> saveBeep(bool beep) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_beepKey, beep);
+  }
+
+  // Cargar configuración de emitir sonido
+  static Future<bool> loadBeep() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_beepKey) ?? false;
+  }
 }

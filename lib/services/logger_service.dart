@@ -90,17 +90,15 @@ class LoggerService {
   /// Limpiar logs antiguos (mantener solo los últimos X días)
   Future<void> _cleanOldLogs(Directory logDir) async {
     try {
-      final files = await logDir.list().toList();
       final now = DateTime.now();
-      
-      for (var file in files) {
-        if (file is File && file.path.contains('anfibius_log_')) {
-          final stat = await file.stat();
+      await for (final fileEntity in logDir.list()) { 
+        if (fileEntity is File && fileEntity.path.contains('anfibius_log_')) {
+          final stat = await fileEntity.stat();
           final age = now.difference(stat.modified).inDays;
           
           if (age > maxLogFiles) {
-            await file.delete();
-            print('🗑️ Log antiguo eliminado: ${file.path}');
+            await fileEntity.delete();
+            print('🗑️ Log antiguo eliminado: ${fileEntity.path}');
           }
         }
       }

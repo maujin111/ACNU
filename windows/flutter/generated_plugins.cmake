@@ -7,13 +7,13 @@ list(APPEND FLUTTER_PLUGIN_LIST
   flutter_pos_printer_platform_image_3
   permission_handler_windows
   screen_retriever_windows
-  system_tray
+  share_plus
   tray_manager
+  url_launcher_windows
   window_manager
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
-  flutter_local_notifications_windows
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)
