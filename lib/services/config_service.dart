@@ -66,6 +66,8 @@ class ConfigService {
   static const String _autoListeningEnabledKey = 'auto_listening_enabled';
   static const String _ttsEnabledKey = 'tts_enabled';
 
+  
+
   // Guardar la impresora seleccionada
   static Future<void> saveSelectedPrinter(BluetoothPrinter? printer) async {
     final prefs = await SharedPreferences.getInstance();

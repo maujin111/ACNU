@@ -17,6 +17,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   late Future<List<Employee>> _employeesFuture;
   final TextEditingController _searchController = TextEditingController();
   String? _currentSearchTerm;
+  String _currentFilter = 'CExNA'; // Por defecto: Sin huella registrada
 
   @override
   void initState() {
@@ -28,7 +29,10 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     final authService = Provider.of<AuthService>(context, listen: false);
     final employeeService = EmployeeService(authService);
     setState(() {
-      _employeesFuture = employeeService.getEmployees(searchTerm: searchTerm);
+      _employeesFuture = employeeService.getEmployees(
+        searchTerm: searchTerm,
+        searchType: _currentFilter,
+      );
     });
   }
 
@@ -46,13 +50,14 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
         title: const Text('Gestión de Empleados'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => _loadEmployees(searchTerm: _currentSearchTerm),
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
               await Provider.of<AuthService>(context, listen: false).logout();
-              // Navigate back to login screen
-              Navigator.of(
-                context,
-              ).pushReplacementNamed('/'); // Assuming '/' is your login route
+              Navigator.of(context).pushReplacementNamed('/');
             },
           ),
         ],
@@ -61,17 +66,45 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.all(8.0),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                labelText: 'Buscar Empleados',
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.search),
-                  onPressed: _onSearch,
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      labelText: 'Buscar Empleados',
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.search),
+                        onPressed: _onSearch,
+                      ),
+                      border: const OutlineInputBorder(),
+                    ),
+                    onSubmitted: (_) => _onSearch(),
+                  ),
                 ),
-                border: const OutlineInputBorder(),
-              ),
-              onSubmitted: (_) => _onSearch(),
+                const SizedBox(width: 8),
+                DropdownButton<String>(
+                  value: _currentFilter,
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'CExNA',
+                      child: Text('Sin Huella'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'CExA', // Suponiendo que este es el código para 'Con Asignación'
+                      child: Text('Con Huella'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() {
+                        _currentFilter = value;
+                      });
+                      _loadEmployees(searchTerm: _currentSearchTerm);
+                    }
+                  },
+                ),
+              ],
             ),
           ),
           Expanded(

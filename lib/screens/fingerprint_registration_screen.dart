@@ -57,7 +57,7 @@ class _FingerprintRegistrationScreenState
 
   void _startRegistration() async {
     if (_fingerprintService == null) return;
-    if (_isProcessing) return; // Prevenir doble inicio
+    if (_isProcessing) return; 
 
     setState(() {
       _isProcessing = true;
@@ -67,15 +67,16 @@ class _FingerprintRegistrationScreenState
       _currentCapture = 0;
     });
 
-    // Cuando el SDK detecta el dedo por primera vez, iniciar simulación del progreso
+    // Callback para cuando se detecta el dedo físicamente
     _fingerprintService!.onFingerDetected = () {
-      if (!mounted || _currentCapture > 0) return; // Solo la primera vez
-
-      // Simular el progreso de las 3 capturas mientras FpEnroll trabaja
-      _simulateThreeCaptures();
+      if (!mounted) return;
+      setState(() {
+        _status = RegistrationStatus.reading;
+        _statusMessage = '📸 Leyendo huella... Mantenga el dedo quieto';
+      });
     };
 
-    // Callback de errores
+    // Callback para cuando debe levantar el dedo
     _fingerprintService!.onRegistrationStatusChange = (
       bool isReading,
       String? error,
@@ -89,10 +90,29 @@ class _FingerprintRegistrationScreenState
           _errorMessage = error;
           _isProcessing = false;
         });
+      } else if (isReading) {
+        // El servicio nos dirá cuántas capturas llevamos
+        setState(() {
+          _currentCapture++;
+          if (_currentCapture < _totalCaptures) {
+            _status = RegistrationStatus.liftFinger;
+            _statusMessage = '⬆️ ¡Bien! Levante el dedo';
+            
+            // Esperar un momento y pedir la siguiente
+            Future.delayed(const Duration(seconds: 1), () {
+              if (mounted && _isProcessing) {
+                setState(() {
+                  _status = RegistrationStatus.waitingForFinger;
+                  _statusMessage = '👇 Coloque el dedo nuevamente ($_currentCapture/$_totalCaptures)';
+                });
+              }
+            });
+          }
+        });
       }
     };
 
-    // Callback de éxito
+    // Callback de éxito final
     _fingerprintService!.onRegistrationSuccess = () {
       if (!mounted) return;
 
@@ -100,94 +120,16 @@ class _FingerprintRegistrationScreenState
         _status = RegistrationStatus.success;
         _statusMessage = '¡Huella registrada correctamente!';
         _errorMessage = null;
-        _currentCapture = 3; // SDK requiere 3 colocaciones
+        _currentCapture = 3;
         _isProcessing = false;
       });
     };
 
-    // Iniciar el proceso de registro
+    // Iniciar el proceso de registro real
     _fingerprintService!.startFingerprintRegistration(widget.employeeId);
   }
 
-  // Simular las 3 capturas mientras FpEnroll está ejecutándose
-  void _simulateThreeCaptures() async {
-    // Primera captura
-    setState(() {
-      _currentCapture = 1;
-      _status = RegistrationStatus.reading;
-      _statusMessage = '📸 Captura 1/3 - Mantenga el dedo quieto';
-    });
-
-    await Future.delayed(const Duration(milliseconds: 1500));
-    if (!mounted ||
-        _status == RegistrationStatus.success ||
-        _status == RegistrationStatus.error)
-      return;
-
-    setState(() {
-      _status = RegistrationStatus.liftFinger;
-      _statusMessage = '⬆️ Levante el dedo del lector';
-    });
-
-    await Future.delayed(const Duration(milliseconds: 1000));
-    if (!mounted ||
-        _status == RegistrationStatus.success ||
-        _status == RegistrationStatus.error)
-      return;
-
-    setState(() {
-      _status = RegistrationStatus.waitingForFinger;
-      _statusMessage = '👇 Coloque el dedo nuevamente (2/3)';
-    });
-
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (!mounted ||
-        _status == RegistrationStatus.success ||
-        _status == RegistrationStatus.error)
-      return;
-
-    // Segunda captura
-    setState(() {
-      _currentCapture = 2;
-      _status = RegistrationStatus.reading;
-      _statusMessage = '📸 Captura 2/3 - Mantenga el dedo quieto';
-    });
-
-    await Future.delayed(const Duration(milliseconds: 1500));
-    if (!mounted ||
-        _status == RegistrationStatus.success ||
-        _status == RegistrationStatus.error)
-      return;
-
-    setState(() {
-      _status = RegistrationStatus.liftFinger;
-      _statusMessage = '⬆️ Levante el dedo del lector';
-    });
-
-    await Future.delayed(const Duration(milliseconds: 1000));
-    if (!mounted ||
-        _status == RegistrationStatus.success ||
-        _status == RegistrationStatus.error)
-      return;
-
-    setState(() {
-      _status = RegistrationStatus.waitingForFinger;
-      _statusMessage = '👇 Coloque el dedo nuevamente (3/3)';
-    });
-
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (!mounted ||
-        _status == RegistrationStatus.success ||
-        _status == RegistrationStatus.error)
-      return;
-
-    // Tercera captura
-    setState(() {
-      _currentCapture = 3;
-      _status = RegistrationStatus.reading;
-      _statusMessage = '📸 Captura 3/3 - Procesando...';
-    });
-  }
+  // Eliminamos _simulateThreeCaptures ya que ahora el proceso es real
 
   void _resetRegistration() {
     if (_fingerprintService != null) {
@@ -461,6 +403,7 @@ class _FingerprintRegistrationScreenState
   Widget _buildActionButtons() {
     if (_status == RegistrationStatus.idle) {
       return ElevatedButton.icon(
+        key: const ValueKey('btn_start_reg'),
         onPressed: _startRegistration,
         icon: const Icon(Icons.fingerprint, size: 28),
         label: const Text('Iniciar Registro'),
@@ -468,13 +411,18 @@ class _FingerprintRegistrationScreenState
           backgroundColor: Colors.blue,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-          textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          textStyle: const TextStyle(
+            fontSize: 18, 
+            fontWeight: FontWeight.bold,
+            inherit: true,
+          ),
         ),
       );
     } else if (_status == RegistrationStatus.success) {
       return Column(
         children: [
           ElevatedButton.icon(
+            key: const ValueKey('btn_reg_another'),
             onPressed: _resetRegistration,
             icon: const Icon(Icons.refresh, size: 28),
             label: const Text('Registrar Otra Huella'),
@@ -485,11 +433,13 @@ class _FingerprintRegistrationScreenState
               textStyle: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
+                inherit: true,
               ),
             ),
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
+            key: const ValueKey('btn_finish_reg'),
             onPressed: () => Navigator.of(context).pop(true),
             icon: const Icon(Icons.check_circle),
             label: const Text('Finalizar'),
@@ -500,6 +450,7 @@ class _FingerprintRegistrationScreenState
               textStyle: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
+                inherit: true,
               ),
             ),
           ),
@@ -507,6 +458,7 @@ class _FingerprintRegistrationScreenState
       );
     } else if (_status == RegistrationStatus.error) {
       return ElevatedButton.icon(
+        key: const ValueKey('btn_retry_reg'),
         onPressed: _resetRegistration,
         icon: const Icon(Icons.refresh),
         label: const Text('Reintentar'),
@@ -514,6 +466,7 @@ class _FingerprintRegistrationScreenState
           backgroundColor: Colors.orange,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+          textStyle: const TextStyle(inherit: true),
         ),
       );
     } else {

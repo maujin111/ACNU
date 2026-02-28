@@ -313,6 +313,8 @@ class _LectorHuellaState extends State<LectorHuella> {
                                 color: Colors.grey[100],
                                 child: _buildFingerprintImage(
                                   fingerprintService.lastFingerprintImage!,
+                                  fingerprintService.lastImageWidth,
+                                  fingerprintService.lastImageHeight,
                                 ),
                               ),
                             ),
@@ -383,45 +385,9 @@ class _LectorHuellaState extends State<LectorHuella> {
   }
 
   // Construir el widget de imagen de huella
-  Widget _buildFingerprintImage(Uint8List imageData) {
+  Widget _buildFingerprintImage(Uint8List imageData, int width, int height) {
     try {
-      print('🖼️ Procesando imagen de huella: ${imageData.length} bytes');
-
-      // Determinar las dimensiones de la imagen basándose en el tamaño de los datos
-      int width, height;
-
-      // Intentar determinar las dimensiones más probables
-      if (imageData.length == 92160) {
-        // 256x360 (dimensiones estándar esperadas)
-        width = 256;
-        height = 360;
-      } else if (imageData.length == 73728) {
-        // 256x288 (dimensiones reales del SDK)
-        width = 256;
-        height = 288;
-      } else if (imageData.length == 65536) {
-        // 256x256 (cuadrada)
-        width = 256;
-        height = 256;
-      } else {
-        // Intentar calcular dimensiones asumiendo ancho de 256
-        width = 256;
-        height = imageData.length ~/ width;
-
-        // Verificar si las dimensiones son razonables
-        if (height < 100 || height > 500) {
-          print(
-            '⚠️ Dimensiones calculadas no son razonables: ${width}x$height',
-          );
-          return _buildErrorImage(
-            'Tamaño de imagen no soportado: ${imageData.length} bytes',
-          );
-        }
-      }
-
-      print(
-        '✅ Dimensiones de imagen determinadas: ${width}x$height = ${width * height} bytes',
-      );
+      print('🖼️ Procesando imagen de huella: ${imageData.length} bytes (${width}x${height})');
 
       // Verificar que tenemos exactamente los datos esperados
       final expectedSize = width * height;

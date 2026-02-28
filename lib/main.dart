@@ -28,7 +28,23 @@ import 'package:launch_at_startup/launch_at_startup.dart'
 import 'package:desktop_multi_window/desktop_multi_window.dart'
     if (dart.library.html) 'package:anfibius_uwu/platform_stubs.dart';
 
+
+import 'dart:io';
+
+import 'package:http/http.dart' as http;
+
+class HttpOverridesForDev extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    return super.createHttpClient(context)
+      ..badCertificateCallback =
+          (X509Certificate cert, String host, int port) => true;
+  }
+}
+
 void main(List<String> args) async {
+
+  HttpOverrides.global = HttpOverridesForDev();
   // Capturar errores no manejados
   FlutterError.onError = (FlutterErrorDetails details) {
     print('Flutter Error: ${details.exception}');
@@ -108,6 +124,8 @@ void main(List<String> args) async {
     // Continuar sin notificaciones si hay error
   }
 
+  
+
   print('🚀 Iniciando aplicación...');
   runApp(const MyApp());
 }
@@ -138,7 +156,7 @@ class MyApp extends StatelessWidget {
               ),
           update:
               (context, authService, fingerprintReaderService) =>
-                  fingerprintReaderService!..updateAuthService(authService),
+                 FingerprintReaderService(authService),
         ),
         ChangeNotifierProvider(create: (_) => ObjetivosService()),
         ProxyProvider<PrinterService, PrintJobService>(
