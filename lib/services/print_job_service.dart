@@ -9,8 +9,8 @@ import 'package:image/image.dart';
 
 // Función utilitaria para formatear valores numéricos
 String formatearValorNumerico(dynamic valor) {
+  
   if (valor == null) return '0.00';
-
   if (valor is num) {
     return valor.toStringAsFixed(2);
   }

@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:anfibius_uwu/configuraciones.dart';
 import 'package:anfibius_uwu/dispositivos.dart';
+import 'package:anfibius_uwu/services/nfc_pcsc_service.dart';
+import 'package:anfibius_uwu/services/nfc_service.dart';
 import 'package:anfibius_uwu/services/print_job_service.dart';
 import 'package:anfibius_uwu/services/printer_service.dart';
 import 'package:anfibius_uwu/services/startup_service.dart';
@@ -56,10 +58,13 @@ Future<void> _mainInit(List<String> args) async {
   FlutterError.onError = (FlutterErrorDetails details) {
     print('❌ [${DateTime.now()}] Flutter Error: ${details.exception}');
     print('📋 StackTrace: ${details.stack}');
-    
+
     // También guardar en archivo de log si está disponible
     try {
-      logger.error('Flutter Error: ${details.exception}', stackTrace: details.stack);
+      logger.error(
+        'Flutter Error: ${details.exception}',
+        stackTrace: details.stack,
+      );
     } catch (e) {
       // Si falla el logger, solo mostrar en consola
     }
@@ -68,7 +73,7 @@ Future<void> _mainInit(List<String> args) async {
 
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 🆕 Inicializar servicio de logging
+  // 🆕 Inicializar servicios
   try {
     await logger.init();
     logger.success('Logger Service inicializado');
@@ -147,7 +152,6 @@ Future<void> _mainInit(List<String> args) async {
 
   try {
     await NotificationsService().init();
-    print('✅ NotificationsService inicializado');
   } catch (e) {
     print('❌ Error inicializando NotificationsService: $e');
     // Continuar sin notificaciones si hay error
@@ -180,6 +184,7 @@ class MyApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(create: (_) => ThemeService()),
         ChangeNotifierProvider(create: (_) => StartupService()..init()),
+        ChangeNotifierProvider(create: (_) => NfcPcscService()),
       ],
       child: Consumer<ThemeService>(
         builder: (context, themeService, child) {
@@ -274,7 +279,7 @@ class _MyHomePageState extends State<MyHomePage>
     with TrayListener, WindowListener, WidgetsBindingObserver {
   WindowController? window;
   final Map<int, WindowController> _childWindows = {};
-  
+
   // 🛡️ Flag para saber si estamos en suspensión (evita crashes en window_manager/tray_manager)
   bool _isSystemSuspended = false;
 
@@ -323,13 +328,17 @@ class _MyHomePageState extends State<MyHomePage>
     // 🛡️ PROTECCIÓN: Envolver en try-catch
     try {
       if (data is Map) {
-        print('📨 [${DateTime.now()}] Datos recibidos del servicio de primer plano: $data');
+        print(
+          '📨 [${DateTime.now()}] Datos recibidos del servicio de primer plano: $data',
+        );
 
         final type = data['type'];
 
         if (type == 'heartbeat') {
           // El servicio sigue activo, actualizar UI si es necesario
-          print('💓 [${DateTime.now()}] Heartbeat del servicio - Todo funcionando correctamente');
+          print(
+            '💓 [${DateTime.now()}] Heartbeat del servicio - Todo funcionando correctamente',
+          );
         } else if (type == 'check_websocket') {
           // Verificar que el WebSocket sigue conectado
           try {
@@ -369,30 +378,34 @@ class _MyHomePageState extends State<MyHomePage>
         context,
         listen: false,
       );
-      
+
       // 🆕 Obtener el PrinterService
       final printerService = Provider.of<PrinterService>(
         context,
         listen: false,
       );
 
-      print('📱 [${DateTime.now()}] Cambio de estado del ciclo de vida: $state');
+      print(
+        '📱 [${DateTime.now()}] Cambio de estado del ciclo de vida: $state',
+      );
 
       switch (state) {
         case AppLifecycleState.paused:
           // App va a segundo plano o laptop entra en suspensión
-          print('📱 [${DateTime.now()}] App pausada (segundo plano/suspensión)');
-          
+          print(
+            '📱 [${DateTime.now()}] App pausada (segundo plano/suspensión)',
+          );
+
           // 🛡️ CRÍTICO: Marcar como suspendido ANTES de cualquier otra operación
           _isSystemSuspended = true;
-          
+
           try {
             webSocketService.onAppPaused();
           } catch (e, stackTrace) {
             print('❌ [${DateTime.now()}] Error en onAppPaused: $e');
             print('📋 Stack trace: $stackTrace');
           }
-          
+
           // 🆕 CRÍTICO: Pausar servicio de impresoras para evitar ACCESS_VIOLATION en FFI
           try {
             printerService.pauseService();
@@ -408,35 +421,45 @@ class _MyHomePageState extends State<MyHomePage>
                 text: 'Escuchando órdenes de impresión...',
               );
             } catch (e) {
-              print('⚠️ [${DateTime.now()}] Error actualizando notificación: $e');
+              print(
+                '⚠️ [${DateTime.now()}] Error actualizando notificación: $e',
+              );
             }
           }
           break;
 
         case AppLifecycleState.resumed:
           // App vuelve a primer plano o laptop sale de suspensión
-          print('📱 [${DateTime.now()}] App reanudada (primer plano/despertar)');
-          
+          print(
+            '📱 [${DateTime.now()}] App reanudada (primer plano/despertar)',
+          );
+
           // En Windows, esperar un poco para que el sistema se estabilice después de suspensión
           if (Platform.isWindows) {
-            print('💻 Windows: Esperando 3 segundos para estabilización del sistema...');
+            print(
+              '💻 Windows: Esperando 3 segundos para estabilización del sistema...',
+            );
             Future.delayed(const Duration(seconds: 3), () {
               if (mounted) {
                 // 🛡️ Marcar como NO suspendido
                 _isSystemSuspended = false;
-                
+
                 try {
                   webSocketService.onAppResumed();
                 } catch (e, stackTrace) {
-                  print('❌ [${DateTime.now()}] Error en onAppResumed (delayed): $e');
+                  print(
+                    '❌ [${DateTime.now()}] Error en onAppResumed (delayed): $e',
+                  );
                   print('📋 Stack trace: $stackTrace');
                 }
-                
+
                 // 🆕 Reanudar servicio de impresoras
                 try {
                   printerService.resumeService();
                 } catch (e, stackTrace) {
-                  print('❌ [${DateTime.now()}] Error reanudando PrinterService: $e');
+                  print(
+                    '❌ [${DateTime.now()}] Error reanudando PrinterService: $e',
+                  );
                   print('📋 Stack trace: $stackTrace');
                 }
               }
@@ -444,18 +467,20 @@ class _MyHomePageState extends State<MyHomePage>
           } else {
             // En otras plataformas, llamar inmediatamente
             _isSystemSuspended = false;
-            
+
             try {
               webSocketService.onAppResumed();
             } catch (e, stackTrace) {
               print('❌ [${DateTime.now()}] Error en onAppResumed: $e');
               print('📋 Stack trace: $stackTrace');
             }
-            
+
             try {
               printerService.resumeService();
             } catch (e, stackTrace) {
-              print('❌ [${DateTime.now()}] Error reanudando PrinterService: $e');
+              print(
+                '❌ [${DateTime.now()}] Error reanudando PrinterService: $e',
+              );
               print('📋 Stack trace: $stackTrace');
             }
           }
@@ -467,7 +492,9 @@ class _MyHomePageState extends State<MyHomePage>
                 text: 'App en primer plano',
               );
             } catch (e) {
-              print('⚠️ [${DateTime.now()}] Error actualizando notificación: $e');
+              print(
+                '⚠️ [${DateTime.now()}] Error actualizando notificación: $e',
+              );
             }
           }
           break;
@@ -486,14 +513,16 @@ class _MyHomePageState extends State<MyHomePage>
           if (Platform.isWindows) {
             // 🛡️ CRÍTICO: Marcar como suspendido INMEDIATAMENTE
             _isSystemSuspended = true;
-            
+
             try {
               webSocketService.onAppPaused();
             } catch (e, stackTrace) {
-              print('❌ [${DateTime.now()}] Error en onAppPaused desde hidden: $e');
+              print(
+                '❌ [${DateTime.now()}] Error en onAppPaused desde hidden: $e',
+              );
               print('📋 Stack trace: $stackTrace');
             }
-            
+
             // 🆕 También pausar PrinterService
             try {
               final printerService = Provider.of<PrinterService>(
@@ -502,7 +531,9 @@ class _MyHomePageState extends State<MyHomePage>
               );
               printerService.pauseService();
             } catch (e, stackTrace) {
-              print('❌ [${DateTime.now()}] Error pausando PrinterService desde hidden: $e');
+              print(
+                '❌ [${DateTime.now()}] Error pausando PrinterService desde hidden: $e',
+              );
               print('📋 Stack trace: $stackTrace');
             }
           }
@@ -520,7 +551,6 @@ class _MyHomePageState extends State<MyHomePage>
       print('⚠️ Widget no montado, abortando setup de auto print');
       return;
     }
-
     final webSocketService = Provider.of<WebSocketService>(
       context,
       listen: false,
@@ -530,12 +560,11 @@ class _MyHomePageState extends State<MyHomePage>
       listen: false,
     );
     final printerService = Provider.of<PrinterService>(context, listen: false);
-
     // Configurar el callback para notificar cuando se necesita reiniciar (zombie state)
     webSocketService.onNeedRestart = () {
       // 🛡️ Verificar que el widget sigue montado antes de mostrar el diálogo
       if (!mounted) return;
-      
+
       // Mostrar diálogo informando al usuario que la app necesita reiniciarse
       showDialog(
         context: context,
@@ -565,7 +594,9 @@ class _MyHomePageState extends State<MyHomePage>
                 onPressed: () {
                   Navigator.of(dialogContext).pop();
                   // Cerrar la aplicación para forzar reinicio
-                  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+                  if (Platform.isWindows ||
+                      Platform.isLinux ||
+                      Platform.isMacOS) {
                     windowManager.close();
                   } else {
                     SystemNavigator.pop();
@@ -578,7 +609,7 @@ class _MyHomePageState extends State<MyHomePage>
         },
       );
     };
-    
+
     // Configurar el callback para imprimir automáticamente cuando llegue un mensaje
     webSocketService.onNewMessage = (String jsonMessage) async {
       // 🛡️ PROTECCIÓN: Envolver TODO en try-catch para evitar crashes
@@ -599,7 +630,6 @@ class _MyHomePageState extends State<MyHomePage>
           } else if (parsedData is Map<String, dynamic>) {
             data = parsedData;
           } else {
-            print('❌ Formato de mensaje no válido');
             return;
           }
 
@@ -619,16 +649,28 @@ class _MyHomePageState extends State<MyHomePage>
             'VENTA',
             'TEST',
             'SORTEO',
+            'NFC', // Agregado NFC a tipos permitidos para historial
           ];
 
           if (type == null || !allowedTypes.contains(type.toUpperCase())) {
-            print(
-              '⚠️ Tipo de documento "$type" no permitido. Solo se permiten: ${allowedTypes.join(", ")}',
-            );
             return; // Salir silenciosamente sin mostrar notificación de error
           }
 
-          print('✅ Tipo de documento válido: $type');
+          if (type.toUpperCase() == 'NFC') {
+            if (Platform.isAndroid || Platform.isIOS) {
+              print(
+                '📡 Tipo de mensaje es para lectura NFC, iniciando proceso de lectura...',
+              );
+              await nfc.startNFC();
+              return;
+            } else if (Platform.isWindows) {
+              print(
+                '📡 Tipo de mensaje es para lectura NFC, iniciando proceso de lectura con PCSC...',
+              );
+              await nfcPcsc.startNFC(webSocketService);
+              return;
+            }
+          }
 
           // **NUEVO: Mostrar información de impresora solicitada**
           if (targetPrinterName != null) {
@@ -695,7 +737,7 @@ class _MyHomePageState extends State<MyHomePage>
       } catch (e, stackTrace) {
         print('❌ [${DateTime.now()}] Error en impresión automática: $e');
         print('📋 Stack trace: $stackTrace');
-        
+
         // 🛡️ PROTECCIÓN: No dejar que las notificaciones crasheen
         try {
           NotificationsService().showNotification(
@@ -704,7 +746,9 @@ class _MyHomePageState extends State<MyHomePage>
             body: 'Error al procesar la orden: $e',
           );
         } catch (notificationError) {
-          print('⚠️ [${DateTime.now()}] No se pudo mostrar notificación: $notificationError');
+          print(
+            '⚠️ [${DateTime.now()}] No se pudo mostrar notificación: $notificationError',
+          );
         }
       }
     };
@@ -765,10 +809,10 @@ class _MyHomePageState extends State<MyHomePage>
       trayManager.removeListener(this);
       windowManager.removeListener(this);
     }
-    
+
     // 🆕 Cerrar el logger service
     logger.dispose();
-    
+
     super.dispose();
   }
 
@@ -776,10 +820,12 @@ class _MyHomePageState extends State<MyHomePage>
   void onWindowClose() {
     // 🛡️ PROTECCIÓN: No llamar a minimizeToTray durante suspensión
     if (_isSystemSuspended) {
-      print('⚠️ [${DateTime.now()}] Sistema suspendido, ignorando onWindowClose');
+      print(
+        '⚠️ [${DateTime.now()}] Sistema suspendido, ignorando onWindowClose',
+      );
       return;
     }
-    
+
     try {
       minimizeToTray();
     } catch (e, stackTrace) {
@@ -790,10 +836,12 @@ class _MyHomePageState extends State<MyHomePage>
 
   void minimizeToTray() async {
     if (!_isDesktop()) return;
-    
+
     // 🛡️ PROTECCIÓN: No llamar a windowManager durante suspensión
     if (_isSystemSuspended) {
-      print('⚠️ [${DateTime.now()}] Sistema suspendido, ignorando minimizeToTray');
+      print(
+        '⚠️ [${DateTime.now()}] Sistema suspendido, ignorando minimizeToTray',
+      );
       return;
     }
 
@@ -815,10 +863,12 @@ class _MyHomePageState extends State<MyHomePage>
   @override
   void onTrayIconMouseDown() {
     if (!_isDesktop()) return;
-    
+
     // 🛡️ PROTECCIÓN: No llamar a windowManager durante suspensión
     if (_isSystemSuspended) {
-      print('⚠️ [${DateTime.now()}] Sistema suspendido, ignorando onTrayIconMouseDown');
+      print(
+        '⚠️ [${DateTime.now()}] Sistema suspendido, ignorando onTrayIconMouseDown',
+      );
       return;
     }
 
@@ -834,10 +884,12 @@ class _MyHomePageState extends State<MyHomePage>
   @override
   void onTrayMenuItemClick(MenuItem item) {
     if (!_isDesktop()) return;
-    
+
     // 🛡️ PROTECCIÓN: No llamar a windowManager durante suspensión
     if (_isSystemSuspended) {
-      print('⚠️ [${DateTime.now()}] Sistema suspendido, ignorando onTrayMenuItemClick: ${item.key}');
+      print(
+        '⚠️ [${DateTime.now()}] Sistema suspendido, ignorando onTrayMenuItemClick: ${item.key}',
+      );
       return;
     }
 
@@ -898,9 +950,7 @@ class _MyHomePageState extends State<MyHomePage>
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => const LogsScreen(),
-                ),
+                MaterialPageRoute(builder: (context) => const LogsScreen()),
               );
             },
             tooltip: 'Ver logs del sistema',
@@ -932,8 +982,10 @@ class _MyHomePageState extends State<MyHomePage>
               if (!webSocketService.isConnected) {
                 return FloatingActionButton(
                   onPressed: () {
-                    print('🔄 [${DateTime.now()}] Reconexión manual solicitada por el usuario');
-                    
+                    print(
+                      '🔄 [${DateTime.now()}] Reconexión manual solicitada por el usuario',
+                    );
+
                     // Mostrar mensaje de carga
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -941,7 +993,7 @@ class _MyHomePageState extends State<MyHomePage>
                         duration: Duration(seconds: 2),
                       ),
                     );
-                    
+
                     // Forzar reconexión
                     webSocketService.reconnect();
                   },
@@ -955,6 +1007,7 @@ class _MyHomePageState extends State<MyHomePage>
               }
             },
           ),
+
           const SizedBox(height: 16),
           FloatingActionButton(
             onPressed: () {

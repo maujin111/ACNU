@@ -37,7 +37,9 @@ class WebSocketService extends ChangeNotifier {
   // 🆕 Watchdog timer para detectar estado zombie
   Timer? _watchdogTimer;
   DateTime? _lastSuccessfulActivity;
-  static const Duration _watchdogTimeout = Duration(minutes: 3); // Reducido de 5 a 3 minutos
+  static const Duration _watchdogTimeout = Duration(
+    minutes: 3,
+  ); // Reducido de 5 a 3 minutos
 
   // Contador de intentos de reconexión
   int _reconnectAttempts = 0;
@@ -51,7 +53,7 @@ class WebSocketService extends ChangeNotifier {
 
   // Flag para saber si el servicio fue disposed
   bool _isDisposed = false;
-  
+
   // 🆕 Servicio de notificaciones
   final NotificationsService _notificationsService = NotificationsService();
 
@@ -67,32 +69,32 @@ class WebSocketService extends ChangeNotifier {
   WebSocketService() {
     // Comenzar inicialización en la construcción del servicio
     _initFromStorage();
-    
+
     // 🆕 Iniciar watchdog timer para detectar estado zombie
     _startWatchdog();
-    
+
     // 🆕 Configurar callback para notificaciones
     _notificationsService.onNotificationClick = _handleNotificationClick;
   }
-  
+
   // 🆕 Manejar click en notificaciones
   void _handleNotificationClick(String? payload) {
     logger.info('Notificación clickeada con payload: $payload');
-    
+
     if (payload == 'reconnect') {
       // Usuario clickeó la notificación de desconexión
       logger.info('Usuario solicitó reconexión desde notificación');
       reconnect(); // Forzar reconexión inmediata
     }
   }
-  
+
   // 🆕 WATCHDOG TIMER - Detecta estado zombie y reinicia la app si es necesario
   void _startWatchdog() {
     if (_isDisposed) return;
-    
+
     _lastSuccessfulActivity = DateTime.now();
     _watchdogTimer?.cancel();
-    
+
     // Verificar cada 2 minutos si hay actividad
     _watchdogTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
       try {
@@ -100,30 +102,35 @@ class WebSocketService extends ChangeNotifier {
           timer.cancel();
           return;
         }
-        
+
         final now = DateTime.now();
-        final timeSinceLastActivity = now.difference(_lastSuccessfulActivity ?? now);
-        
-        logger.debug('Watchdog check - Última actividad hace: ${timeSinceLastActivity.inMinutes} minutos');
-        
+        final timeSinceLastActivity = now.difference(
+          _lastSuccessfulActivity ?? now,
+        );
+
+        logger.debug(
+          'Watchdog check - Última actividad hace: ${timeSinceLastActivity.inMinutes} minutos',
+        );
+
         // Si tiene token y debe estar conectado pero no ha tenido actividad en 3+ minutos
-        if (_token != null && 
-            _token!.isNotEmpty && 
-            _shouldAutoReconnect && 
+        if (_token != null &&
+            _token!.isNotEmpty &&
+            _shouldAutoReconnect &&
             timeSinceLastActivity > _watchdogTimeout) {
-          
-          logger.warning('WATCHDOG: Detectado estado zombie (sin actividad por ${timeSinceLastActivity.inMinutes} min)');
-          
+          logger.warning(
+            'WATCHDOG: Detectado estado zombie (sin actividad por ${timeSinceLastActivity.inMinutes} min)',
+          );
+
           // Intentar recuperación agresiva
           if (!_isConnected && !_isConnecting) {
             logger.info('WATCHDOG: Intentando recuperación automática...');
-            
+
             // Limpiar todo y forzar reconexión
             _emergencyCleanup();
-            
+
             // CRÍTICO: Asegurar que autoreconnect esté habilitado
             _shouldAutoReconnect = true;
-            
+
             // Esperar un poco y reconectar
             Future.delayed(const Duration(seconds: 3), () {
               if (!_isDisposed && !_isSystemSuspending) {
@@ -133,47 +140,58 @@ class WebSocketService extends ChangeNotifier {
                 _connect();
               }
             });
-            
+
             // Actualizar timestamp para evitar spam de recuperaciones
             _lastSuccessfulActivity = DateTime.now();
           } else if (_isConnected) {
             // Si dice estar conectado pero no hay actividad, algo está mal
-            logger.warning('WATCHDOG: Conectado pero sin actividad - Posible estado zombie');
-            
+            logger.warning(
+              'WATCHDOG: Conectado pero sin actividad - Posible estado zombie',
+            );
+
             // Verificar si el canal realmente funciona
             try {
-              _channel?.sink.add(json.encode({
-                'type': 'watchdog_ping',
-                'timestamp': DateTime.now().millisecondsSinceEpoch,
-              }));
+              _channel?.sink.add(
+                json.encode({
+                  'type': 'watchdog_ping',
+                  'timestamp': DateTime.now().millisecondsSinceEpoch,
+                }),
+              );
               logger.debug('WATCHDOG: Ping de verificación enviado');
             } catch (e) {
-              logger.error('WATCHDOG: Canal no funcional, limpiando...', error: e);
+              logger.error(
+                'WATCHDOG: Canal no funcional, limpiando...',
+                error: e,
+              );
               _emergencyCleanup();
-              
+
               // CRÍTICO: Asegurar que autoreconnect esté habilitado
               _shouldAutoReconnect = true;
-              
+
               Future.delayed(const Duration(seconds: 3), () {
                 if (!_isDisposed && !_isSystemSuspending) {
                   _reconnectAttempts = 0;
                   _isConnecting = false;
-                  logger.info('WATCHDOG: Ejecutando reconexión forzada después de canal no funcional...');
+                  logger.info(
+                    'WATCHDOG: Ejecutando reconexión forzada después de canal no funcional...',
+                  );
                   _connect();
                 }
               });
             }
-            
+
             _lastSuccessfulActivity = DateTime.now();
           }
         }
-        
+
         // Si ha estado en estado zombie por mucho tiempo (10+ minutos), notificar para reinicio
         if (timeSinceLastActivity > const Duration(minutes: 10) &&
-            _token != null && 
+            _token != null &&
             _shouldAutoReconnect) {
-          logger.error('WATCHDOG: Estado zombie crítico - Recomendando reinicio de app');
-          
+          logger.error(
+            'WATCHDOG: Estado zombie crítico - Recomendando reinicio de app',
+          );
+
           // Notificar al UI que necesita reiniciar
           if (onNeedRestart != null) {
             try {
@@ -183,17 +201,16 @@ class WebSocketService extends ChangeNotifier {
             }
           }
         }
-        
       } catch (e, stackTrace) {
         logger.error('Error en watchdog', error: e, stackTrace: stackTrace);
       }
     });
   }
-  
+
   // 🆕 Limpieza de emergencia cuando se detecta estado zombie
   void _emergencyCleanup() {
     logger.info('EMERGENCY CLEANUP - Limpiando recursos zombies...');
-    
+
     try {
       // Cancelar TODOS los timers
       _reconnectTimer?.cancel();
@@ -202,23 +219,27 @@ class WebSocketService extends ChangeNotifier {
       _heartbeatTimer = null;
       _connectionCheckTimer?.cancel();
       _connectionCheckTimer = null;
-      
+
       // Cerrar conexiones
       _subscription?.cancel();
       _subscription = null;
       _channel?.sink.close();
       _channel = null;
-      
+
       // Resetear flags
       _isConnected = false;
       _isConnecting = false;
-      
+
       logger.success('Emergency cleanup completado');
     } catch (e, stackTrace) {
-      logger.error('Error en emergency cleanup', error: e, stackTrace: stackTrace);
+      logger.error(
+        'Error en emergency cleanup',
+        error: e,
+        stackTrace: stackTrace,
+      );
     }
   }
-  
+
   Future<void> _initFromStorage() async {
     try {
       // Cargar mensajes anteriores (solo tipos permitidos)
@@ -377,16 +398,20 @@ class WebSocketService extends ChangeNotifier {
 
     // Si ya hay una conexión en curso, esperar a que termine
     if (_isConnecting) {
-      print('⚠️ [${DateTime.now()}] Ya hay una conexión en curso, esperando...');
+      print(
+        '⚠️ [${DateTime.now()}] Ya hay una conexión en curso, esperando...',
+      );
       // Esperar hasta 5 segundos a que termine la conexión actual
       int waitCount = 0;
       while (_isConnecting && waitCount < 10) {
         await Future.delayed(const Duration(milliseconds: 500));
         waitCount++;
       }
-      
+
       if (_isConnecting) {
-        print('⚠️ [${DateTime.now()}] Timeout esperando conexión actual, abortando');
+        print(
+          '⚠️ [${DateTime.now()}] Timeout esperando conexión actual, abortando',
+        );
         _isConnecting = false; // Forzar reset
       }
     }
@@ -404,21 +429,21 @@ class WebSocketService extends ChangeNotifier {
     // Desconectar si está conectado
     if (_isConnected) {
       _isConnected = false;
-      
+
       try {
         await _subscription?.cancel();
         _subscription = null;
       } catch (e) {
         print('⚠️ Error cancelando subscription en forceReconnect: $e');
       }
-      
+
       try {
         await _channel?.sink.close();
         _channel = null;
       } catch (e) {
         print('⚠️ Error cerrando channel en forceReconnect: $e');
       }
-      
+
       await Future.delayed(const Duration(milliseconds: 500));
     }
 
@@ -482,13 +507,15 @@ class WebSocketService extends ChangeNotifier {
       // Lista de URLs para probar en orden de preferencia
       final urlsToTry = [
         'wss://soporte.anfibius.net:3300/$_token', // HTTPS con puerto 3300
-              ];
+      ];
 
       for (String urlString in urlsToTry) {
         // 🛡️ Verificar disposed en cada iteración
         if (_isDisposed) {
           logger.warning('Servicio disposed durante conexión, abortando');
-          print('⚠️ [${DateTime.now()}] Servicio disposed durante conexión, abortando');
+          print(
+            '⚠️ [${DateTime.now()}] Servicio disposed durante conexión, abortando',
+          );
           _isConnecting = false;
           return;
         }
@@ -536,10 +563,12 @@ class WebSocketService extends ChangeNotifier {
             (message) {
               // 🛡️ Verificar que no estamos disposed antes de procesar
               if (_isDisposed) {
-                print('⚠️ [${DateTime.now()}] Mensaje recibido pero servicio disposed');
+                print(
+                  '⚠️ [${DateTime.now()}] Mensaje recibido pero servicio disposed',
+                );
                 return;
               }
-              
+
               print('Mensaje recibido - Raw: $message');
               _addMessage(message.toString());
 
@@ -555,26 +584,29 @@ class WebSocketService extends ChangeNotifier {
                 print('⚠️ [${DateTime.now()}] onDone pero servicio disposed');
                 return;
               }
-              
+
               // 🔥 NO reconectar si aún estamos en proceso de conexión inicial
               // (dejemos que el catch del for loop lo maneje)
               if (_isConnecting) {
-                print('⚠️ [${DateTime.now()}] onDone durante conexión inicial, no reconectar aún');
+                print(
+                  '⚠️ [${DateTime.now()}] onDone durante conexión inicial, no reconectar aún',
+                );
                 return;
               }
-              
+
               print('WebSocket desconectado (onDone)');
               logger.info('WebSocket desconectado (onDone)');
               _isConnected = false;
-              
+
               // 🔔 NOTIFICACIÓN: Desconectado
-              _notificationsService.showNotification(
-                id: 1,
-                title: '⚠️ Anfibius - Desconectado',
-                body: 'Conexión perdida. Intentando reconectar automáticamente...',
-                payload: 'reconnect',
-              );
-              
+              //   _notificationsService.showNotification(
+              //   id: 1,
+              //   title: '⚠️ Anfibius - Desconectado',
+              //   body:
+              //       'Conexión perdida. Intentando reconectar automáticamente...',
+              //   payload: 'reconnect',
+              // );
+
               // Cancelar timers de forma segura
               try {
                 _heartbeatTimer?.cancel();
@@ -582,22 +614,24 @@ class WebSocketService extends ChangeNotifier {
               } catch (e) {
                 print('⚠️ Error cancelando heartbeat en onDone: $e');
               }
-              
+
               try {
                 _connectionCheckTimer?.cancel();
                 _connectionCheckTimer = null;
               } catch (e) {
                 print('⚠️ Error cancelando connection check en onDone: $e');
               }
-              
+
               _safeNotifyListeners();
-              
+
               // Siempre intentar reconectar si está habilitado y no estamos suspendiendo
               if (_shouldAutoReconnect && !_isSystemSuspending) {
                 logger.info('onDone: Iniciando reconexión automática...');
                 _scheduleReconnect();
               } else {
-                logger.warning('onDone: Reconexión no iniciada - autoReconnect=$_shouldAutoReconnect, suspending=$_isSystemSuspending');
+                logger.warning(
+                  'onDone: Reconexión no iniciada - autoReconnect=$_shouldAutoReconnect, suspending=$_isSystemSuspending',
+                );
               }
             },
             onError: (error) {
@@ -606,17 +640,24 @@ class WebSocketService extends ChangeNotifier {
                 print('⚠️ [${DateTime.now()}] onError pero servicio disposed');
                 return;
               }
-              
+
               // 🔥 NO reconectar si aún estamos en proceso de conexión inicial
               // (dejemos que el catch del for loop lo maneje)
               if (_isConnecting) {
-                print('⚠️ [${DateTime.now()}] onError durante conexión inicial, no reconectar aún');
-                logger.warning('onError durante conexión inicial, se maneja en catch del loop');
+                print(
+                  '⚠️ [${DateTime.now()}] onError durante conexión inicial, no reconectar aún',
+                );
+                logger.warning(
+                  'onError durante conexión inicial, se maneja en catch del loop',
+                );
                 return;
               }
-              
+
               print('Error de WebSocket: $error');
-              logger.error('Error de WebSocket después de conexión establecida', error: error);
+              logger.error(
+                'Error de WebSocket después de conexión establecida',
+                error: error,
+              );
               _handleWebSocketError(error, urlString);
             },
             cancelOnError: false, // 🆕 NO cancelar el stream en errores
@@ -625,21 +666,22 @@ class WebSocketService extends ChangeNotifier {
           _isConnected = true;
           _reconnectAttempts = 0; // Resetear intentos en conexión exitosa
           _isConnecting = false; // 🆕 Marcar que terminamos de conectar
-          _lastSuccessfulActivity = DateTime.now(); // 🆕 Registrar actividad exitosa
+          _lastSuccessfulActivity =
+              DateTime.now(); // 🆕 Registrar actividad exitosa
           _startHeartbeat(); // Iniciar heartbeat para detectar conexiones muertas
           _safeNotifyListeners();
           logger.success('✅ CONEXIÓN EXITOSA a: $urlString');
           logger.info('Contador de intentos reseteado a 0');
           print('✅ Conectado exitosamente a: $urlString');
-          
+
           // 🔔 NOTIFICACIÓN: Reconectado
-          _notificationsService.showNotification(
-            id: 2,
-            title: '✅ Anfibius - Conectado',
-            body: 'Conexión restablecida exitosamente',
-            payload: 'connected',
-          );
-          
+          // _notificationsService.showNotification(
+          //   id: 2,
+          //   title: '✅ Anfibius - Conectado',
+          //   body: 'Conexión restablecida exitosamente',
+          //   payload: 'connected',
+          // );
+
           return; // Salir del bucle si la conexión fue exitosa
         } catch (e) {
           String errorMessage = _getDetailedErrorMessage(e, urlString);
@@ -657,23 +699,29 @@ class WebSocketService extends ChangeNotifier {
       _isConnected = false;
       _isConnecting = false; // 🆕 Marcar que terminamos de intentar conectar
       _safeNotifyListeners();
-      
+
       // Intentar reconectar después de un tiempo si está habilitado
       if (_shouldAutoReconnect && !_isSystemSuspending) {
         logger.info('Iniciando ciclo de reconexión automática...');
         _scheduleReconnect();
       } else {
-        logger.warning('Reconexión automática no iniciada - autoReconnect=$_shouldAutoReconnect, suspending=$_isSystemSuspending');
+        logger.warning(
+          'Reconexión automática no iniciada - autoReconnect=$_shouldAutoReconnect, suspending=$_isSystemSuspending',
+        );
       }
     } catch (e, stackTrace) {
       // 🛡️ Capturar cualquier error inesperado en _connect
-      logger.error('Error crítico en _connect', error: e, stackTrace: stackTrace);
+      logger.error(
+        'Error crítico en _connect',
+        error: e,
+        stackTrace: stackTrace,
+      );
       print('❌ [${DateTime.now()}] Error crítico en _connect: $e');
       print('📋 Stack trace: $stackTrace');
       _isConnected = false;
       _isConnecting = false;
       _safeNotifyListeners();
-      
+
       // Solo reconectar si no estamos disposed
       if (!_isDisposed && _shouldAutoReconnect) {
         _scheduleReconnect();
@@ -694,7 +742,9 @@ class WebSocketService extends ChangeNotifier {
       // Verificar si el servicio fue disposed
       if (_isDisposed) {
         logger.warning('Servicio disposed, no se programará reconexión');
-        print('⚠️ [${DateTime.now()}] Servicio disposed, no se programará reconexión');
+        print(
+          '⚠️ [${DateTime.now()}] Servicio disposed, no se programará reconexión',
+        );
         return;
       }
 
@@ -705,7 +755,7 @@ class WebSocketService extends ChangeNotifier {
       } catch (e) {
         print('⚠️ Error cancelando reconnect timer: $e');
       }
-      
+
       try {
         _heartbeatTimer?.cancel();
         _heartbeatTimer = null;
@@ -733,8 +783,12 @@ class WebSocketService extends ChangeNotifier {
         delaySeconds = 15; // Máximo 15 segundos
       }
 
-      logger.info('Programando reconexión #$_reconnectAttempts en ${delaySeconds}s...');
-      print('🔄 [${DateTime.now()}] Programando reconexión #$_reconnectAttempts en ${delaySeconds}s...');
+      logger.info(
+        'Programando reconexión #$_reconnectAttempts en ${delaySeconds}s...',
+      );
+      print(
+        '🔄 [${DateTime.now()}] Programando reconexión #$_reconnectAttempts en ${delaySeconds}s...',
+      );
 
       // Programar un intento de reconexión
       _reconnectTimer = Timer(Duration(seconds: delaySeconds), () {
@@ -742,7 +796,9 @@ class WebSocketService extends ChangeNotifier {
         try {
           if (_isDisposed) {
             logger.warning('Servicio disposed en callback de reconexión');
-            print('⚠️ [${DateTime.now()}] Servicio disposed en callback de reconexión');
+            print(
+              '⚠️ [${DateTime.now()}] Servicio disposed en callback de reconexión',
+            );
             return;
           }
 
@@ -750,7 +806,9 @@ class WebSocketService extends ChangeNotifier {
               _token != null &&
               _token!.isNotEmpty &&
               _shouldAutoReconnect) {
-            logger.info('Ejecutando intento de reconexión #$_reconnectAttempts');
+            logger.info(
+              'Ejecutando intento de reconexión #$_reconnectAttempts',
+            );
             print(
               '🔄 [${DateTime.now()}] Intentando reconectar al WebSocket (intento #$_reconnectAttempts)...',
             );
@@ -761,7 +819,9 @@ class WebSocketService extends ChangeNotifier {
             _reconnectAttempts = 0; // Resetear contador
           }
         } catch (e, stackTrace) {
-          print('❌ [${DateTime.now()}] Error crítico en callback de reconexión: $e');
+          print(
+            '❌ [${DateTime.now()}] Error crítico en callback de reconexión: $e',
+          );
           print('📋 Stack trace: $stackTrace');
           // Intentar de nuevo después de un tiempo solo si no está disposed
           if (!_isDisposed && _shouldAutoReconnect) {
@@ -805,7 +865,7 @@ class WebSocketService extends ChangeNotifier {
     } catch (e) {
       print('⚠️ Error cancelando subscription: $e');
     }
-    
+
     try {
       _channel?.sink.close();
       _channel = null;
@@ -819,29 +879,31 @@ class WebSocketService extends ChangeNotifier {
   /// Método público para forzar reconexión manual
   void reconnect() {
     logger.info('Reconexión manual solicitada');
-    logger.debug('Estado actual: disposed=$_isDisposed, connected=$_isConnected, connecting=$_isConnecting, autoReconnect=$_shouldAutoReconnect, suspending=$_isSystemSuspending, hasToken=${_token != null && _token!.isNotEmpty}');
-    
+    logger.debug(
+      'Estado actual: disposed=$_isDisposed, connected=$_isConnected, connecting=$_isConnecting, autoReconnect=$_shouldAutoReconnect, suspending=$_isSystemSuspending, hasToken=${_token != null && _token!.isNotEmpty}',
+    );
+
     // Verificar que no estamos disposed
     if (_isDisposed) {
       logger.warning('Servicio disposed, no se puede reconectar');
       return;
     }
-    
+
     // Verificar que tenemos token
     if (_token == null || _token!.isEmpty) {
       logger.warning('No hay token disponible para reconectar');
       return;
     }
-    
+
     // Habilitar autoreconnect
     _shouldAutoReconnect = true;
     logger.success('AutoReconnect habilitado');
-    
+
     // Si ya está conectado o conectando, cancelar primero
     if (_isConnected || _isConnecting) {
       logger.info('Limpiando conexión existente antes de reconectar...');
       _emergencyCleanup();
-      
+
       // Esperar un momento antes de reconectar
       Future.delayed(const Duration(seconds: 1), () {
         if (!_isDisposed && !_isSystemSuspending) {
@@ -850,7 +912,9 @@ class WebSocketService extends ChangeNotifier {
           logger.info('Iniciando reconexión después de cleanup...');
           _connect();
         } else {
-          logger.warning('Reconexión cancelada - disposed: $_isDisposed, suspending: $_isSystemSuspending');
+          logger.warning(
+            'Reconexión cancelada - disposed: $_isDisposed, suspending: $_isSystemSuspending',
+          );
         }
       });
     } else {
@@ -869,7 +933,7 @@ class WebSocketService extends ChangeNotifier {
       print('⚠️ [${DateTime.now()}] Servicio disposed, no se inicia heartbeat');
       return;
     }
-    
+
     _heartbeatTimer?.cancel();
 
     // Enviar ping cada 30 segundos para mantener la conexión viva en Android
@@ -884,7 +948,9 @@ class WebSocketService extends ChangeNotifier {
       try {
         // Verificar si el servicio fue disposed
         if (_isDisposed) {
-          print('⚠️ [${DateTime.now()}] Servicio disposed, cancelando heartbeat');
+          print(
+            '⚠️ [${DateTime.now()}] Servicio disposed, cancelando heartbeat',
+          );
           timer.cancel();
           return;
         }
@@ -909,7 +975,9 @@ class WebSocketService extends ChangeNotifier {
           }
         } else {
           // Si no hay conexión, intentar reconectar
-          print('⚠️ [${DateTime.now()}] Heartbeat detectó desconexión, intentando reconectar...');
+          print(
+            '⚠️ [${DateTime.now()}] Heartbeat detectó desconexión, intentando reconectar...',
+          );
           timer.cancel();
           if (_shouldAutoReconnect && !_isDisposed) {
             _scheduleReconnect();
@@ -935,16 +1003,22 @@ class WebSocketService extends ChangeNotifier {
   void _startConnectionCheck() {
     // 🔥 VERIFICAR: Solo disposed, NO verificar _isInBackground
     if (_isDisposed) {
-      print('⚠️ [${DateTime.now()}] Servicio disposed, no se inicia connection check');
+      print(
+        '⚠️ [${DateTime.now()}] Servicio disposed, no se inicia connection check',
+      );
       return;
     }
-    
+
     _connectionCheckTimer?.cancel();
 
-    _connectionCheckTimer = Timer.periodic(const Duration(seconds: 60), (timer) {
+    _connectionCheckTimer = Timer.periodic(const Duration(seconds: 60), (
+      timer,
+    ) {
       try {
         if (_isDisposed) {
-          print('⚠️ [${DateTime.now()}] Servicio disposed, cancelando connection check timer');
+          print(
+            '⚠️ [${DateTime.now()}] Servicio disposed, cancelando connection check timer',
+          );
           timer.cancel();
           return;
         }
@@ -952,8 +1026,14 @@ class WebSocketService extends ChangeNotifier {
         print('🔍 [${DateTime.now()}] Verificación periódica de conexión...');
 
         // Si no está conectado y tiene token, forzar reconexión
-        if (!_isConnected && _token != null && _token!.isNotEmpty && _shouldAutoReconnect && !_isConnecting) {
-          print('⚠️ [${DateTime.now()}] Conexión perdida detectada, forzando reconexión...');
+        if (!_isConnected &&
+            _token != null &&
+            _token!.isNotEmpty &&
+            _shouldAutoReconnect &&
+            !_isConnecting) {
+          print(
+            '⚠️ [${DateTime.now()}] Conexión perdida detectada, forzando reconexión...',
+          );
           _reconnectAttempts = 0; // Resetear contador para intentar de nuevo
           _connect();
         } else if (_isConnected) {
@@ -975,13 +1055,15 @@ class WebSocketService extends ChangeNotifier {
   void _addMessage(String message) {
     // 🛡️ Verificar que no estamos disposed
     if (_isDisposed) {
-      print('⚠️ [${DateTime.now()}] Intento de agregar mensaje en servicio disposed');
+      print(
+        '⚠️ [${DateTime.now()}] Intento de agregar mensaje en servicio disposed',
+      );
       return;
     }
-    
+
     // 🆕 Registrar actividad exitosa para el watchdog
     _lastSuccessfulActivity = DateTime.now();
-    
+
     if (message.trim().isEmpty) {
       return;
     }
@@ -1141,7 +1223,9 @@ class WebSocketService extends ChangeNotifier {
       if (!_isDisposed) {
         notifyListeners();
       } else {
-        print('⚠️ [${DateTime.now()}] Intento de notificar listeners en servicio disposed');
+        print(
+          '⚠️ [${DateTime.now()}] Intento de notificar listeners en servicio disposed',
+        );
       }
     } catch (e, stackTrace) {
       print('❌ [${DateTime.now()}] Error al notificar listeners: $e');
@@ -1153,14 +1237,14 @@ class WebSocketService extends ChangeNotifier {
   @override
   void dispose() {
     print('🛑 [${DateTime.now()}] Limpiando WebSocketService...');
-    
+
     // Marcar como disposed PRIMERO antes de hacer cualquier otra cosa
     _isDisposed = true;
-    
+
     // Deshabilitar reconexión al hacer dispose
     _shouldAutoReconnect = false;
     _isConnecting = false;
-    
+
     // Cancelar TODOS los temporizadores INMEDIATAMENTE
     try {
       _reconnectTimer?.cancel();
@@ -1168,21 +1252,23 @@ class WebSocketService extends ChangeNotifier {
     } catch (e) {
       print('⚠️ [${DateTime.now()}] Error cancelando reconnect timer: $e');
     }
-    
+
     try {
       _heartbeatTimer?.cancel();
       _heartbeatTimer = null;
     } catch (e) {
       print('⚠️ [${DateTime.now()}] Error cancelando heartbeat timer: $e');
     }
-    
+
     try {
       _connectionCheckTimer?.cancel();
       _connectionCheckTimer = null;
     } catch (e) {
-      print('⚠️ [${DateTime.now()}] Error cancelando connection check timer: $e');
+      print(
+        '⚠️ [${DateTime.now()}] Error cancelando connection check timer: $e',
+      );
     }
-    
+
     try {
       _watchdogTimer?.cancel();
       _watchdogTimer = null;
@@ -1197,7 +1283,7 @@ class WebSocketService extends ChangeNotifier {
     } catch (e) {
       print('⚠️ [${DateTime.now()}] Error cancelando subscription: $e');
     }
-    
+
     try {
       _channel?.sink.close();
       _channel = null;
@@ -1215,20 +1301,20 @@ class WebSocketService extends ChangeNotifier {
     }
 
     _isConnected = false;
-    
+
     // 🆕 Limpiar callbacks y listas para evitar memory leaks
     onNewMessage = null;
     onNeedRestart = null;
     _messages.clear();
     _historyItems.clear();
-    
+
     // Llamar a super.dispose() al final
     try {
       super.dispose();
     } catch (e) {
       print('⚠️ [${DateTime.now()}] Error en super.dispose(): $e');
     }
-    
+
     print('✅ [${DateTime.now()}] WebSocketService limpiado completamente');
   }
 
@@ -1236,13 +1322,15 @@ class WebSocketService extends ChangeNotifier {
   void onAppPaused() {
     _isInBackground = true;
     print('⏸️ App en segundo plano - manteniendo conexión WebSocket activa');
-    
+
     // 🔥 FIX CRÍTICO: En Windows, CANCELAR TODOS los timers durante suspensión
     // Los timers causan ACCESS_VIOLATION (c0000005) cuando intentan acceder a
     // objetos de Flutter después de que Windows suspende la aplicación
     if (Platform.isWindows) {
-      print('💤 Windows detectado - CANCELANDO timers para evitar crashes durante suspensión');
-      
+      print(
+        '💤 Windows detectado - CANCELANDO timers para evitar crashes durante suspensión',
+      );
+
       // Cancelar TODOS los timers de forma segura
       try {
         _reconnectTimer?.cancel();
@@ -1251,7 +1339,7 @@ class WebSocketService extends ChangeNotifier {
       } catch (e) {
         print('⚠️ Error cancelando reconnect timer en pause: $e');
       }
-      
+
       try {
         _heartbeatTimer?.cancel();
         _heartbeatTimer = null;
@@ -1259,7 +1347,7 @@ class WebSocketService extends ChangeNotifier {
       } catch (e) {
         print('⚠️ Error cancelando heartbeat timer en pause: $e');
       }
-      
+
       try {
         _connectionCheckTimer?.cancel();
         _connectionCheckTimer = null;
@@ -1267,7 +1355,7 @@ class WebSocketService extends ChangeNotifier {
       } catch (e) {
         print('⚠️ Error cancelando connection check timer en pause: $e');
       }
-      
+
       try {
         _watchdogTimer?.cancel();
         _watchdogTimer = null;
@@ -1275,13 +1363,15 @@ class WebSocketService extends ChangeNotifier {
       } catch (e) {
         print('⚠️ Error cancelando watchdog timer en pause: $e');
       }
-      
+
       // Marcar que el sistema está suspendiendo
       _isSystemSuspending = true;
-      
-      print('✅ Todos los timers cancelados - evitando ACCESS_VIOLATION durante suspensión');
+
+      print(
+        '✅ Todos los timers cancelados - evitando ACCESS_VIOLATION durante suspensión',
+      );
     }
-    
+
     // En Android, el servicio de primer plano mantiene la conexión activa
     if (Platform.isAndroid) {
       print('🤖 Android - Servicio de primer plano mantiene la conexión');
@@ -1295,7 +1385,7 @@ class WebSocketService extends ChangeNotifier {
       print('⚠️ [${DateTime.now()}] Servicio disposed, ignorando onAppResumed');
       return;
     }
-    
+
     _isInBackground = false;
     print('▶️ App en primer plano - verificando conexión WebSocket');
 
@@ -1307,7 +1397,7 @@ class WebSocketService extends ChangeNotifier {
       _shouldAutoReconnect = true;
       _reconnectAttempts = 0;
       _isConnecting = false;
-      
+
       // Reconectar después de un pequeño delay para que el sistema se estabilice
       print('💻 Reconectando después de 2 segundos...');
       Future.delayed(const Duration(seconds: 2), () {
@@ -1316,7 +1406,6 @@ class WebSocketService extends ChangeNotifier {
         }
       });
     } else if (_isConnected) {
-      print('✅ Conexión WebSocket sigue activa - todo funcionando correctamente');
       // Reiniciar timers si estaban cancelados (Windows)
       if (Platform.isWindows) {
         print('🔄 Reiniciando timers después de reanudar...');
@@ -1346,6 +1435,23 @@ class WebSocketService extends ChangeNotifier {
       print('Historial de impresión limpiado correctamente');
     } catch (e) {
       print('Error al limpiar el historial: $e');
+    }
+  }
+
+  //Metodo para enviar un mensaje
+  bool sendMessage(Map<String, dynamic> message) {
+    try {
+      final String jsonMessage = json.encode(message);
+      _channel!.sink.add(jsonMessage);
+      print('📤 Mensaje enviado: $jsonMessage');
+      return true;
+    } catch (e, stackTrace) {
+      logger.error(
+        'Error al enviar mensaje por WebSocket',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      return false;
     }
   }
 }

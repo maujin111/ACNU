@@ -49,6 +49,13 @@ dependencies:
   # Desktop - System tray (SOLO tray_manager, removido system_tray)
   tray_manager: ^0.5.0
 
+  # NFC
+  flutter_nfc_kit: ^3.4.1
+  # PCSC (solo para Windows)
+  dart_pcsc: ^2.0.2
+
+ 
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -22,7 +22,9 @@ class LoggerService {
   // Configuración
   static const int maxLogFiles = 7; // Mantener logs de los últimos 7 días
   static const int maxBufferSize = 50; // Flush cada 50 líneas
-  static const Duration flushInterval = Duration(seconds: 30); // O cada 30 segundos
+  static const Duration flushInterval = Duration(
+    seconds: 30,
+  ); // O cada 30 segundos
 
   /// Inicializar el servicio de logging
   Future<void> init() async {
@@ -30,10 +32,10 @@ class LoggerService {
 
     try {
       await _initLogFile();
-      
+
       // Timer para flush periódico
       _flushTimer = Timer.periodic(flushInterval, (_) => _flushBuffer());
-      
+
       _isInitialized = true;
       log('📝 Logger Service iniciado correctamente');
     } catch (e) {
@@ -49,16 +51,16 @@ class LoggerService {
     try {
       final directory = await _getLogDirectory();
       final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      
+
       // Si cambió el día, crear nuevo archivo
       if (_currentDate != today) {
         // Cerrar archivo anterior si existe (esto llamará a _flushBuffer sin rotar)
         await _closeCurrentFile();
-        
+
         _currentDate = today;
         final fileName = 'anfibius_log_$today.txt';
         _currentLogFile = File('${directory.path}/$fileName');
-        
+
         // Crear archivo si no existe
         if (!await _currentLogFile!.exists()) {
           await _currentLogFile!.create(recursive: true);
@@ -70,9 +72,9 @@ class LoggerService {
             '${'=' * 80}\n\n',
           );
         }
-        
+
         _logSink = _currentLogFile!.openWrite(mode: FileMode.append);
-        
+
         // Limpiar logs antiguos
         await _cleanOldLogs(directory);
       }
@@ -89,11 +91,11 @@ class LoggerService {
 
     final appDocDir = await getApplicationDocumentsDirectory();
     final logDir = Directory('${appDocDir.path}/anfibius_logs');
-    
+
     if (!await logDir.exists()) {
       await logDir.create(recursive: true);
     }
-    
+
     _cachedLogDir = logDir;
     return logDir;
   }
@@ -102,11 +104,11 @@ class LoggerService {
   Future<void> _cleanOldLogs(Directory logDir) async {
     try {
       final now = DateTime.now();
-      await for (final fileEntity in logDir.list()) { 
+      await for (final fileEntity in logDir.list()) {
         if (fileEntity is File && fileEntity.path.contains('anfibius_log_')) {
           final stat = await fileEntity.stat();
           final age = now.difference(stat.modified).inDays;
-          
+
           if (age > maxLogFiles) {
             await fileEntity.delete();
             print('🗑️ Log antiguo eliminado: ${fileEntity.path}');
@@ -134,19 +136,15 @@ class LoggerService {
   /// Escribir log en buffer
   void log(String message, {String level = 'INFO'}) {
     if (!_isInitialized) {
-      print(message); // Fallback a consola
       return;
     }
 
     final timestamp = DateFormat('HH:mm:ss.SSS').format(DateTime.now());
     final logLine = '[$timestamp] [$level] $message';
-    
-    // Imprimir en consola también
-    print(logLine);
-    
+
     // Agregar a buffer
     _logBuffer.add(logLine);
-    
+
     // Flush si el buffer está lleno
     if (_logBuffer.length >= maxBufferSize) {
       _flushBuffer();
@@ -203,7 +201,7 @@ class LoggerService {
         }
         await _logSink!.flush();
       }
-      
+
       _logBuffer.clear();
     } catch (e) {
       print('❌ Error escribiendo logs a archivo: $e');
@@ -214,11 +212,11 @@ class LoggerService {
   Future<String> getCurrentLogs() async {
     try {
       await _flushBuffer(); // Asegurar que todo esté escrito
-      
+
       if (_currentLogFile != null && await _currentLogFile!.exists()) {
         return await _currentLogFile!.readAsString();
       }
-      
+
       return 'No hay logs disponibles para hoy.';
     } catch (e) {
       return 'Error leyendo logs: $e';
@@ -229,15 +227,18 @@ class LoggerService {
   Future<List<File>> getLogFiles() async {
     try {
       final directory = await _getLogDirectory();
-      final files = await directory
-          .list()
-          .where((file) => file is File && file.path.contains('anfibius_log_'))
-          .cast<File>()
-          .toList();
-      
+      final files =
+          await directory
+              .list()
+              .where(
+                (file) => file is File && file.path.contains('anfibius_log_'),
+              )
+              .cast<File>()
+              .toList();
+
       // Ordenar por fecha (más reciente primero)
       files.sort((a, b) => b.path.compareTo(a.path));
-      
+
       return files;
     } catch (e) {
       print('❌ Error obteniendo archivos de log: $e');
@@ -255,13 +256,13 @@ class LoggerService {
   Future<File?> exportLogs(String destinationPath) async {
     try {
       await _flushBuffer();
-      
+
       if (_currentLogFile != null && await _currentLogFile!.exists()) {
         final destination = File(destinationPath);
         await _currentLogFile!.copy(destination.path);
         return destination;
       }
-      
+
       return null;
     } catch (e) {
       print('❌ Error exportando logs: $e');
@@ -274,13 +275,13 @@ class LoggerService {
     try {
       final directory = await _getLogDirectory();
       final files = await directory.list().toList();
-      
+
       for (var file in files) {
         if (file is File) {
           await file.delete();
         }
       }
-      
+
       log('🗑️ Todos los logs han sido eliminados');
     } catch (e) {
       print('❌ Error limpiando logs: $e');
