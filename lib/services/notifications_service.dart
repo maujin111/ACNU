@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
+import 'package:anfibius_uwu/main.dart';
 
 class NotificationsService {
   static final NotificationsService _instance =
@@ -11,6 +12,9 @@ class NotificationsService {
 
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
+  
+  final FlutterLocalNotificationsPlugin notifications = FlutterLocalNotificationsPlugin();
+
   
   // 🆕 Callback para manejar clicks en notificaciones
   Function(String? payload)? onNotificationClick;
@@ -55,12 +59,6 @@ class NotificationsService {
           linux: initializationSettingsLinux,
         );
 
-    // Inicializar el plugin con la configuración
-    await flutterLocalNotificationsPlugin.initialize(
-      initializationSettings,
-      onDidReceiveNotificationResponse: _onNotificationTap,
-    );
-
     // Solicitar permisos en iOS
     await flutterLocalNotificationsPlugin
         .resolvePlatformSpecificImplementation<
@@ -76,15 +74,20 @@ class NotificationsService {
         ?.requestPermissions(alert: true, badge: true, sound: true);
   }
 
-  // Método para manejar el tap en la notificación
-  void _onNotificationTap(NotificationResponse notificationResponse) {
-    // Aquí puedes manejar la acción cuando el usuario toca la notificación
-    debugPrint('Notificación tocada: ${notificationResponse.payload}');
-    
-    // 🆕 Llamar al callback si está definido
-    if (onNotificationClick != null) {
-      onNotificationClick!(notificationResponse.payload);
-    }
+
+  Future<void> initNotifications() async {
+      const AndroidInitializationSettings androidInit =
+      AndroidInitializationSettings('@mipmap/ic_launcher');
+
+      const InitializationSettings settings =
+      InitializationSettings(android: androidInit);
+
+      await notifications.initialize(
+        settings,
+        onDidReceiveNotificationResponse: (response) {
+          navigatorKey.currentState?.pushNamed('/nfc');
+        },
+      );
   }
 
   // Método para mostrar una notificación simple en todos los sistemas
@@ -206,4 +209,7 @@ class NotificationsService {
   Future<void> cancelAllNotifications() async {
     await flutterLocalNotificationsPlugin.cancelAll();
   }
+
+
+
 }

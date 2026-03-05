@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:anfibius_uwu/configuraciones.dart';
 import 'package:anfibius_uwu/dispositivos.dart';
+import 'package:anfibius_uwu/nfc_reader_screen.dart';
 import 'package:anfibius_uwu/services/nfc_pcsc_service.dart';
 import 'package:anfibius_uwu/services/nfc_service.dart';
 import 'package:anfibius_uwu/services/print_job_service.dart';
@@ -37,6 +38,13 @@ import 'package:desktop_multi_window/desktop_multi_window.dart'
 // Importar servicio de primer plano para Android
 import 'package:anfibius_uwu/services/foreground_service.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+
+import 'package:anfibius_uwu/nfc_reader_screen.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>(); 
+final FlutterLocalNotificationsPlugin notifications = FlutterLocalNotificationsPlugin();
+
 
 void main(List<String> args) async {
   // Capturar TODOS los errores no manejados (síncronos Y asíncronos)
@@ -85,6 +93,7 @@ Future<void> _mainInit(List<String> args) async {
   if (Platform.isAndroid) {
     PrinterForegroundService.initForegroundTask();
     logger.info('Servicio de primer plano inicializado para Android');
+    NotificationsService().initNotifications();
   }
 
   // Solo ejecutar funcionalidades de escritorio en plataformas compatibles
@@ -192,6 +201,7 @@ class MyApp extends StatelessWidget {
           if (Platform.isAndroid) {
             return WithForegroundTask(
               child: MaterialApp(
+                navigatorKey: navigatorKey,
                 debugShowCheckedModeBanner: false,
                 title: 'Anfibius Connect Nexus Utility',
                 theme: ThemeData(
@@ -209,12 +219,16 @@ class MyApp extends StatelessWidget {
                 ),
                 themeMode: themeService.themeMode,
                 home: const MyHomePage(title: 'Anfibius Connect Nexus Utility'),
+                routes: {
+                  '/nfc': (context) => const NfcScreen(),
+                },
               ),
             );
           }
 
           // Para otras plataformas, usar MaterialApp directamente
           return MaterialApp(
+            navigatorKey: navigatorKey,
             debugShowCheckedModeBanner: false,
             title: 'Anfibius Connect Nexus Utility',
             theme: ThemeData(
@@ -230,6 +244,9 @@ class MyApp extends StatelessWidget {
             ),
             themeMode: themeService.themeMode,
             home: const MyHomePage(title: 'Anfibius Connect Nexus Utility'),
+            routes: {
+                  '/nfc': (context) => const NfcScreen(),
+                },
           );
         },
       ),

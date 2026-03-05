@@ -6,24 +6,35 @@ import 'package:anfibius_uwu/services/websocket_service.dart';
 import 'package:anfibius_uwu/services/notifications_service.dart';
 
 class NfcService extends ChangeNotifier {
+  bool _leido = false;
+  bool get leido => _leido;
+
+  bool _leyendo = false;
+  bool get leyendo => _leyendo;
+
   Future<void> startNFC() async {
+    _leyendo = false;
+    _leido = false;
     WebSocketService wsService = WebSocketService();
-    logger.info('Iniciando sesión NFC...');
     try {
       var availability = await FlutterNfcKit.nfcAvailability;
       logger.info('Disponibilidad NFC: $availability');
+      _leyendo = true;
+      notifyListeners();
       if (availability != NFCAvailability.available) {
         logger.info(
           'NFC no está disponible o está apagado en este dispositivo.',
         );
         return;
       }
-      logger.info('Acerca la etiqueta NFC ahora...');
+
       NotificationsService().showNotification(
-        id: 1,
-        title: "SCANER ACTIVO",
-        body: "Acerca la etiqueta NFC",
+        id: 999,
+        title: 'Escáner NFC Activo',
+        body: 'Toca aquí para abrir el escáner',
       );
+
+      logger.info('Acerca la etiqueta NFC ahora...');
 
       const flags =
           0x80 |
@@ -40,17 +51,14 @@ class NfcService extends ChangeNotifier {
 
       final datosJson = {"type": "RES_NFC", "uid": tag.id};
 
-      bool wasSent = wsService.sendMessage(datosJson);
-      if (wasSent) {
+      bool wsSent = wsService.sendMessage(datosJson);
+      if (wsSent) {
+        _leido = true;
+        notifyListeners();
         logger.info('Mensaje NFC enviado exitosamente a través de WebSocket.');
       } else {
         logger.error('Error al enviar mensaje NFC a través de WebSocket.');
       }
-      if (tag.ndefAvailable == true) {
-        var ndefRecords = await FlutterNfcKit.readNDEFRecords();
-        logger.info('Contenido NDEF: $ndefRecords');
-      }
-
       stopNfcSession(); // Cerrar sesión NFC después de la lectura
     } catch (e) {
       logger.error('Error o cancelación durante la lectura NFC: $e');
