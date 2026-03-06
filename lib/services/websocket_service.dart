@@ -9,6 +9,7 @@ import '../models/print_history_item.dart';
 import '../services/config_service.dart';
 import '../services/logger_service.dart';
 import '../services/notifications_service.dart';
+import '../services/nfc_service.dart';
 
 class WebSocketService extends ChangeNotifier {
   HttpClient client =
@@ -671,6 +672,12 @@ class WebSocketService extends ChangeNotifier {
           _startHeartbeat(); // Iniciar heartbeat para detectar conexiones muertas
           _safeNotifyListeners();
           logger.success('✅ CONEXIÓN EXITOSA a: $urlString');
+
+          // Iniciar servicio NFC nativo en Android
+          if (Platform.isAndroid && _token != null) {
+            NfcService.startForegroundService(sala: _token!);
+          }
+
           logger.info('Contador de intentos reseteado a 0');
           print('✅ Conectado exitosamente a: $urlString');
 

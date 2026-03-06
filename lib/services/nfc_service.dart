@@ -1,11 +1,32 @@
 import 'package:anfibius_uwu/nfc_reader_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_nfc_kit/flutter_nfc_kit.dart';
 import 'logger_service.dart';
 import 'package:anfibius_uwu/services/websocket_service.dart';
 import 'package:anfibius_uwu/services/notifications_service.dart';
 
 class NfcService extends ChangeNotifier {
+  static const MethodChannel _channel = MethodChannel('nfc_pos');
+
+  static Future<void> startForegroundService({String sala = "general"}) async {
+    try {
+      await _channel.invokeMethod("startService", {"sala": sala});
+      logger.info('Servicio NFC nativo iniciado en sala: $sala');
+    } catch (e) {
+      logger.error('Error al iniciar servicio NFC nativo: $e');
+    }
+  }
+
+  static Future<void> stopForegroundService() async {
+    try {
+      await _channel.invokeMethod("stopService");
+      logger.info('Servicio NFC nativo detenido');
+    } catch (e) {
+      logger.error('Error al detener servicio NFC nativo: $e');
+    }
+  }
+
   bool _leido = false;
   bool get leido => _leido;
 
