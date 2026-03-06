@@ -12,6 +12,8 @@ class NfcService extends ChangeNotifier {
   bool _leyendo = false;
   bool get leyendo => _leyendo;
 
+ 
+
   Future<void> startNFC() async {
     _leyendo = false;
     _leido = false;

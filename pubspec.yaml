@@ -54,6 +54,7 @@ dependencies:
   # PCSC (solo para Windows)
   dart_pcsc: ^2.0.2
 
+
  
 
 dev_dependencies:

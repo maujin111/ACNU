@@ -11,6 +11,8 @@
     <!-- Permisos para NFC -->
     <uses-permission android:name="android.permission.NFC" />
     <uses-feature android:name="android.hardware.nfc" android:required="true" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
 
     <application
         android:label="Anfibius web utility"
@@ -44,10 +46,10 @@
                 <action android:name="android.nfc.action.TECH_DISCOVERED" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+
             <meta-data
                 android:name="android.nfc.action.TECH_DISCOVERED"
                 android:resource="@xml/nfc_tech_filter" />
-
 
         </activity>
 
