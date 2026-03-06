@@ -14,6 +14,14 @@ class NfcForegroundService : Service() {
 
     companion object {
         var currentActivity: WeakReference<Activity>? = null
+        private var instance: WeakReference<NfcForegroundService>? = null
+        private var lastMeseroId: Int = -1
+
+        fun sendCardResult(uid: String) {
+            instance?.get()?.let { service ->
+                service.socket.sendCard(uid, lastMeseroId)
+            }
+        }
     }
 
     private lateinit var socket: SocketManager
@@ -21,6 +29,7 @@ class NfcForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = WeakReference(this)
 
         createChannel()
         startForeground(1, notification())
@@ -29,14 +38,16 @@ class NfcForegroundService : Service() {
         nfcReader = NfcReader(this)
 
         socket.onScanRequest = { meseroId ->
-            val activity = currentActivity?.get()
-            if (activity != null) {
-                nfcReader.readOnce(activity) { uid ->
-                    socket.sendCard(uid, meseroId)
-                }
-            } else {
-                // Si no hay actividad, tal vez deberíamos lanzar una o mostrar una notificación
+            lastMeseroId = meseroId
+            
+            // Lanzar la actividad invisible de escaneo para que robe el foco de Honor Wallet
+            val intent = Intent(this, Class.forName("com.example.anfibius_uwu.NfcScannerActivity")).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
             }
+            startActivity(intent)
         }
     }
 
