@@ -41,18 +41,25 @@ class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         NfcForegroundService.currentActivity = WeakReference(this)
-        
+
         val adapter: NfcAdapter? = NfcAdapter.getDefaultAdapter(this)
-        val pendingIntent: PendingIntent = PendingIntent.getActivity(
-                this, 0, Intent(this, javaClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE)
-        adapter?.enableForegroundDispatch(this, pendingIntent, null, null)
+        if (adapter != null) {
+            val flags = NfcAdapter.FLAG_READER_NFC_A or
+                        NfcAdapter.FLAG_READER_NFC_B or
+                        NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK or
+                        NfcAdapter.FLAG_READER_NO_PLATFORM_SOUNDS
+
+            adapter.enableReaderMode(this, { tag ->
+                val uid = com.example.anfibius_uwu.utils.Hex.bytes(tag.id)
+                NfcForegroundService.sendCardResult(uid)
+            }, flags, null)
+        }
     }
 
     override fun onPause() {
         super.onPause()
         NfcForegroundService.currentActivity = null
-        
         val adapter: NfcAdapter? = NfcAdapter.getDefaultAdapter(this)
-        adapter?.disableForegroundDispatch(this)
+        adapter?.disableReaderMode(this)
     }
 }
