@@ -5,6 +5,8 @@ import android.content.Intent
 import android.nfc.NfcAdapter
 import android.os.Build
 import android.os.IBinder
+import android.os.VibrationEffect
+import android.os.Vibrator
 import androidx.core.app.NotificationCompat
 import com.example.anfibius_uwu.socket.SocketManager
 import com.example.anfibius_uwu.nfc.NfcReader
@@ -40,16 +42,19 @@ class NfcForegroundService : Service() {
         socket.onScanRequest = { meseroId ->
             lastMeseroId = meseroId
             
-            // Traer la app principal al frente para tomar control del NFC
-            val intent = Intent(this, Class.forName("com.example.anfibius_uwu.MainActivity")).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-            }
-            startActivity(intent)
-            
-            // También mostramos una notificación por si el sistema bloquea el inicio de actividad desde segundo plano
+            // En lugar de traer toda la app al frente, solo notificamos
+            // La NfcScannerActivity se encargará de capturar la tarjeta 
+            // gracias a los Intent Filters y la prioridad que configuramos.
             showScanNotification()
+            
+            // Si quieres que vibre al solicitar el escaneo:
+            val vibrator = getSystemService(Vibrator::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator?.vibrate(VibrationEffect.createOneShot(200, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(200)
+            }
         }
     }
 
