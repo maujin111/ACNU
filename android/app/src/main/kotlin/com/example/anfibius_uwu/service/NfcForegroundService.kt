@@ -45,6 +45,7 @@ class NfcForegroundService : Service() {
             val intent = Intent(this, Class.forName("com.example.anfibius_uwu.NfcScannerActivity")).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
             startActivity(intent)

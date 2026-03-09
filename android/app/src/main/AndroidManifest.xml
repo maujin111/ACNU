@@ -39,9 +39,10 @@
             android:name=".NfcScannerActivity"
             android:theme="@android:style/Theme.DeviceDefault.Light.Dialog.NoActionBar"
             android:excludeFromRecents="true"
-            android:noHistory="true"
             android:exported="true"
             android:launchMode="singleInstance"
+            android:showForAllUsers="true"
+            android:showOnLockScreen="true"
             android:configChanges="orientation|keyboardHidden|screenSize">
             
             <intent-filter android:priority="1000">
