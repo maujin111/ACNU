@@ -1,9 +1,6 @@
 package com.example.anfibius_uwu
 
-import android.app.PendingIntent
 import android.content.Intent
-import android.nfc.NfcAdapter
-import android.os.Bundle
 import com.example.anfibius_uwu.service.NfcForegroundService
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -41,25 +38,11 @@ class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         NfcForegroundService.currentActivity = WeakReference(this)
-
-        val adapter: NfcAdapter? = NfcAdapter.getDefaultAdapter(this)
-        if (adapter != null) {
-            val flags = NfcAdapter.FLAG_READER_NFC_A or
-                        NfcAdapter.FLAG_READER_NFC_B or
-                        NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK or
-                        NfcAdapter.FLAG_READER_NO_PLATFORM_SOUNDS
-
-            adapter.enableReaderMode(this, { tag ->
-                val uid = com.example.anfibius_uwu.utils.Hex.bytes(tag.id)
-                NfcForegroundService.sendCardResult(uid)
-            }, flags, null)
-        }
+        // Eliminamos el enableReaderMode manual para que flutter_nfc_kit funcione
     }
 
     override fun onPause() {
         super.onPause()
         NfcForegroundService.currentActivity = null
-        val adapter: NfcAdapter? = NfcAdapter.getDefaultAdapter(this)
-        adapter?.disableReaderMode(this)
     }
 }

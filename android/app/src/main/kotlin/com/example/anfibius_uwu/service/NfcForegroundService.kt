@@ -41,19 +41,22 @@ class NfcForegroundService : Service() {
 
         socket.onScanRequest = { meseroId ->
             lastMeseroId = meseroId
+
+            val intent = Intent(this, Class.forName("com.example.anfibius_uwu.NfcScannerActivity")).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+            startActivity(intent)
             
-            // En lugar de traer toda la app al frente, solo notificamos
-            // La NfcScannerActivity se encargará de capturar la tarjeta 
-            // gracias a los Intent Filters y la prioridad que configuramos.
             showScanNotification()
             
-            // Si quieres que vibre al solicitar el escaneo:
             val vibrator = getSystemService(Vibrator::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator?.vibrate(VibrationEffect.createOneShot(200, VibrationEffect.DEFAULT_AMPLITUDE))
+                vibrator?.vibrate(VibrationEffect.createOneShot(300, VibrationEffect.DEFAULT_AMPLITUDE))
             } else {
                 @Suppress("DEPRECATION")
-                vibrator?.vibrate(200)
+                vibrator?.vibrate(300)
             }
         }
     }

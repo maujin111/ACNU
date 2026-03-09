@@ -36,14 +36,20 @@
 
         <activity
             android:name=".NfcScannerActivity"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:theme="@android:style/Theme.DeviceDefault.Light.Dialog.NoActionBar"
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:exported="true"
+            android:launchMode="singleInstance"
             android:configChanges="orientation|keyboardHidden|screenSize">
             
             <intent-filter android:priority="1000">
                 <action android:name="android.nfc.action.TECH_DISCOVERED" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
+            <intent-filter android:priority="1000">
+                <action android:name="android.nfc.action.TAG_DISCOVERED" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
