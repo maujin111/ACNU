@@ -28,17 +28,23 @@ class SocketManager {
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                android.util.Log.d("ANFIBIUS_SOCKET", "Mensaje recibido nativo: $text")
+                try {
+                    val json = JSONObject(text)
 
-                val json = JSONObject(text)
-
-                if(json.has("type") && json.getString("type") == "nfc"){
-                    val mesero = json.getInt("id")
-                    onScanRequest?.invoke(mesero)
+                    // Soporte para ambos formatos: array o objeto simple
+                    if (json.has("type") && (json.getString("type") == "nfc" || json.getString("type") == "NFC")) {
+                        val meseroId = if (json.has("id")) json.getInt("id") else -1
+                        android.util.Log.d("ANFIBIUS_SOCKET", "Solicitud NFC detectada para mesero: $meseroId")
+                        onScanRequest?.invoke(meseroId)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("ANFIBIUS_SOCKET", "Error parseando mensaje: ${e.message}")
                 }
-
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                android.util.Log.e("ANFIBIUS_SOCKET", "Fallo en el socket nativo: ${t.message}")
                 reconnect(sala)
             }
 
@@ -46,6 +52,7 @@ class SocketManager {
     }
 
     private fun reconnect(sala: String){
+        android.util.Log.d("ANFIBIUS_SOCKET", "Reconectando socket nativo en $reconnectDelay ms...")
         Thread{
             Thread.sleep(reconnectDelay)
             reconnectDelay = (reconnectDelay * 1.5).toLong().coerceAtMost(30000)
@@ -54,14 +61,20 @@ class SocketManager {
     }
 
     fun sendCard(uid: String, mesero: Int){
-
         val json = JSONObject()
         json.put("type", "RES_NFC")
         json.put("uid", uid)
-        // Cambiado 'mesero' por 'id' para mantener consistencia
         json.put("id", mesero)
-
-        socket?.send(json.toString())
+        
+        val message = json.toString()
+        android.util.Log.d("ANFIBIUS_SOCKET", "Enviando respuesta NFC por socket nativo: $message")
+        
+        val sent = socket?.send(message) ?: false
+        if (sent) {
+            android.util.Log.d("ANFIBIUS_SOCKET", "Mensaje enviado exitosamente")
+        } else {
+            android.util.Log.e("ANFIBIUS_SOCKET", "Error al enviar el mensaje por socket")
+        }
     }
 
 }
