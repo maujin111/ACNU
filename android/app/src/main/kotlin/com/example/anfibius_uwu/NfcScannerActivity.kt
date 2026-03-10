@@ -21,7 +21,22 @@ class NfcScannerActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d(TAG, "Iniciando NfcScannerActivity...")
+        Log.d(TAG, "Iniciando NfcScannerActivity con FullScreenIntent")
+        
+        // Banderas críticas para Honor/Huawei antes de setContentView
+        requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+            val keyguardManager = getSystemService(android.app.KeyguardManager::class.java)
+            keyguardManager?.requestDismissKeyguard(this, null)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                           WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                           WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+        }
         
         try {
             setContentView(R.layout.activity_nfc_scan_dialog)
@@ -29,17 +44,6 @@ class NfcScannerActivity : Activity() {
         } catch (e: Exception) {
             Log.e(TAG, "Error cargando layout: ${e.message}")
         }
-
-        // Configurar ventana como diálogo
-        val layoutParams = window.attributes
-        layoutParams.gravity = Gravity.CENTER
-        window.attributes = layoutParams
-        
-        // Banderas críticas para Honor/Huawei
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                       WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
-                       WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                       WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
 
         findViewById<Button>(R.id.btnCancel).setOnClickListener { 
             Log.d(TAG, "Escaneo cancelado por usuario")

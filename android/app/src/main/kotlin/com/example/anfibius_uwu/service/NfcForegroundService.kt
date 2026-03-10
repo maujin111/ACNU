@@ -41,34 +41,51 @@ class NfcForegroundService : Service() {
 
         socket.onScanRequest = { meseroId ->
             lastMeseroId = meseroId
-
+            
+            // LANZAMIENTO DE ALTA PRIORIDAD (FULL SCREEN INTENT)
+            // Esto es lo que usan las alarmas para saltarse los bloqueos de Honor
             val intent = Intent(this, Class.forName("com.example.anfibius_uwu.NfcScannerActivity")).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_NO_USER_ACTION)
                 addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
-            startActivity(intent)
             
-            showScanNotification()
+            val pendingIntent = PendingIntent.getActivity(
+                this, 0, intent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+
+            showScanNotification(pendingIntent)
+            
+            // Intentar también el lanzamiento directo como respaldo
+            try {
+                startActivity(intent)
+            } catch (e: Exception) {
+                // Si falla el directo, el FullScreenIntent de la notificación debería actuar
+            }
             
             val vibrator = getSystemService(Vibrator::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator?.vibrate(VibrationEffect.createOneShot(300, VibrationEffect.DEFAULT_AMPLITUDE))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator?.vibrate(300)
+            vibrator?.let {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    it.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
+                } else {
+                    @Suppress("DEPRECATION")
+                    it.vibrate(500)
+                }
             }
         }
     }
 
-    private fun showScanNotification() {
+    private fun showScanNotification(fullScreenIntent: PendingIntent) {
         val notification = NotificationCompat.Builder(this, "nfc_pos")
-            .setContentTitle("Escaneo solicitado")
-            .setContentText("Acerque la tarjeta ahora")
+            .setContentTitle("LECTURA NFC REQUERIDA")
+            .setContentText("Acerque la tarjeta ahora para procesar")
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setVibrate(longArrayOf(0, 500))
+            .setPriority(NotificationCompat.PRIORITY_MAX) // Máxima prioridad
+            .setCategory(NotificationCompat.CATEGORY_ALARM) // Categoría de alarma para que el sistema la priorice
+            .setFullScreenIntent(fullScreenIntent, true) // ESTO ES LA CLAVE
+            .setAutoCancel(true)
+            .setVibrate(longArrayOf(0, 500, 200, 500))
             .build()
         
         val manager = getSystemService(NotificationManager::class.java)
@@ -97,6 +114,7 @@ class NfcForegroundService : Service() {
             .setContentText("Esperando comandos del servidor")
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setContentIntent(pendingIntent)
+            .setOngoing(true)
             .build()
     }
 
@@ -105,8 +123,9 @@ class NfcForegroundService : Service() {
             val channel = NotificationChannel(
                 "nfc_pos",
                 "NFC POS",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_HIGH // Importancia alta para permitir overlays
             )
+            channel.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
         }

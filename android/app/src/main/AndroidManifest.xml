@@ -40,7 +40,7 @@
             android:theme="@android:style/Theme.DeviceDefault.Light.Dialog.NoActionBar"
             android:excludeFromRecents="true"
             android:exported="true"
-            android:launchMode="singleInstance"
+            android:launchMode="singleTask"
             android:showForAllUsers="true"
             android:showOnLockScreen="true"
             android:configChanges="orientation|keyboardHidden|screenSize">
