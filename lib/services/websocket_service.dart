@@ -98,6 +98,7 @@ class WebSocketService extends ChangeNotifier {
 
     // Verificar cada 2 minutos si hay actividad
     _watchdogTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
+      
       try {
         if (_isDisposed) {
           timer.cancel();
@@ -971,7 +972,6 @@ class WebSocketService extends ChangeNotifier {
                 'timestamp': DateTime.now().millisecondsSinceEpoch,
               }),
             );
-            print('📡 [${DateTime.now()}] Keep-alive ping enviado');
           } catch (e) {
             print('❌ [${DateTime.now()}] Error al enviar heartbeat: $e');
             // Si falla el heartbeat, considerar la conexión como muerta

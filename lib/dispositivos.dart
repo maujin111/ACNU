@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:anfibius_uwu/services/nfc_service.dart';
 import 'package:anfibius_uwu/services/print_job_service.dart';
 import 'package:anfibius_uwu/services/printer_service.dart';
 import 'package:anfibius_uwu/services/websocket_service.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_pos_printer_platform_image_3/flutter_pos_printer_platform_image_3.dart';
 import 'package:flutter_esc_pos_utils/flutter_esc_pos_utils.dart';
+import 'package:anfibius_uwu/services/nfc_pcsc_service.dart';
 
 class Dispositivos extends StatefulWidget {
   const Dispositivos({super.key});
@@ -29,6 +31,8 @@ class _DispositivosState extends State<Dispositivos> {
 
       // Guardar el estado inicial de conexión
       _lastConnectionState = printerService.isConnected;
+      // Verificar el estado del lector NFC al iniciar
+      Provider.of<NfcPcscService>(context, listen: false).checkReaderStatus();
     });
   }
 
@@ -78,6 +82,7 @@ class _DispositivosState extends State<Dispositivos> {
   Widget build(BuildContext context) {
     final printerService = Provider.of<PrinterService>(context);
     final webSocketService = Provider.of<WebSocketService>(context);
+    final nfcService = Provider.of<NfcPcscService>(context);
 
     // Verificar cambios en la conexión
     _checkConnectionChanges();
@@ -150,7 +155,7 @@ class _DispositivosState extends State<Dispositivos> {
                 // Información de la impresora
 
                 // Nueva sección: Múltiples Impresoras
-                if (printerService.connectedPrinters.isNotEmpty) ...[
+                if (nfcService.savedReaderName != null || printerService.connectedPrinters.isNotEmpty) ...[
                   const SizedBox(height: 20),
                   Card(
                     margin: const EdgeInsets.all(8.0),
@@ -160,7 +165,7 @@ class _DispositivosState extends State<Dispositivos> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            "Todas las Impresoras",
+                            "Dispositivos",
                             style: Theme.of(context).textTheme.headlineMedium,
                           ),
                           const SizedBox(height: 10),
@@ -171,6 +176,8 @@ class _DispositivosState extends State<Dispositivos> {
                               color: Colors.grey,
                             ),
                           ),
+
+                          // Lista de impresoras
                           const SizedBox(height: 15),
                           ...printerService.connectedPrinters.entries.map((
                             entry,
@@ -478,6 +485,96 @@ class _DispositivosState extends State<Dispositivos> {
                               ),
                             );
                           }),
+
+                          // Lector NFC
+                          const SizedBox(height: 15),
+                          if (nfcService.savedReaderName != null)
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 12.0),
+                              padding: const EdgeInsets.all(12.0),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: nfcService.isReaderConnected ? Colors.green : Colors.red,
+                                  width: 1.5,
+                                ),
+                                borderRadius: BorderRadius.circular(8.0),
+                                color: nfcService.isReaderConnected
+                                    ? Colors.green.withOpacity(0.05)
+                                    : Colors.red.withOpacity(0.05),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.nfc,
+                                        color: nfcService.isReaderConnected ? Colors.green : Colors.red,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          nfcService.savedReaderName!,
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                                        decoration: BoxDecoration(
+                                          color: nfcService.isReaderConnected ? Colors.green : Colors.red,
+                                          borderRadius: BorderRadius.circular(12.0),
+                                        ),
+                                        child: Text(
+                                          nfcService.isReaderConnected ? "Conectado" : "Desconectado",
+                                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          if (nfcService.isReading)
+                                            const Text(
+                                              "Estado: Esperando tarjeta...",
+                                              style: TextStyle(fontSize: 13, color: Colors.orange, fontStyle: FontStyle.italic),
+                                            ),
+                                        ],
+                                      ),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          // Botón para DESVINCULAR
+                                          IconButton(
+                                            icon: const Icon(Icons.link_off, size: 18, color: Colors.orange),
+                                            tooltip: 'Desvincular lector',
+                                            onPressed: () async {
+                                              await nfcService.forgetReader();
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(content: Text('Lector NFC desvinculado'), backgroundColor: Colors.orange),
+                                                );
+                                              }
+                                            },
+                                          ),
+                                          // Botón para Refrescar
+                                          IconButton(
+                                            icon: const Icon(Icons.refresh, size: 18, color: Colors.blue),
+                                            tooltip: 'Actualizar estado',
+                                            onPressed: () => nfcService.checkReaderStatus(),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
                         ],
                       ),
                     ),

@@ -74,7 +74,7 @@ class NotificationsService {
         ?.requestPermissions(alert: true, badge: true, sound: true);
   }
 
-
+// Método para inicializar las notificaciones con el callback de click
   Future<void> initNotifications() async {
       const AndroidInitializationSettings androidInit =
       AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -89,11 +89,6 @@ class NotificationsService {
         },
       );
   }
-
-
-  
-
-
 
   // Método para mostrar una notificación simple en todos los sistemas
   Future<void> showNotification({
@@ -214,7 +209,4 @@ class NotificationsService {
   Future<void> cancelAllNotifications() async {
     await flutterLocalNotificationsPlugin.cancelAll();
   }
-
-
-
 }
