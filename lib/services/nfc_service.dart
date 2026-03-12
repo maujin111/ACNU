@@ -37,7 +37,7 @@ class NfcService extends ChangeNotifier {
 
   Future<void> startNFC() async {
     _leyendo = false;
-    _leido = false;
+    _leido = false; 
     WebSocketService wsService = WebSocketService();
     try {
       var availability = await FlutterNfcKit.nfcAvailability;
@@ -73,8 +73,8 @@ class NfcService extends ChangeNotifier {
       logger.info('Tipo de tecnología: ${tag.type}');
 
       final datosJson = {"type": "RES_NFC", "uid": tag.id};
-
       bool wsSent = wsService.sendMessage(datosJson);
+      
       if (wsSent) {
         _leido = true;
         notifyListeners();

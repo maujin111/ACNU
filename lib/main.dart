@@ -64,10 +64,6 @@ void main(List<String> args) async {
 Future<void> _mainInit(List<String> args) async {
   // Capturar errores síncronos de Flutter
   FlutterError.onError = (FlutterErrorDetails details) {
-    print('❌ [${DateTime.now()}] Flutter Error: ${details.exception}');
-    print('📋 StackTrace: ${details.stack}');
-
-    // También guardar en archivo de log si está disponible
     try {
       logger.error(
         'Flutter Error: ${details.exception}',
@@ -128,7 +124,7 @@ Future<void> _mainInit(List<String> args) async {
                 : 'Anfibius Connect Nexus Utility',
         appPath: Platform.resolvedExecutable,
       );
-      print('✅ Launch at startup configurado');
+
     } catch (e) {
       print('❌ Error configurando launch at startup: $e');
     }
@@ -152,7 +148,6 @@ Future<void> _mainInit(List<String> args) async {
           ],
         ),
       );
-      print('✅ Tray manager configurado correctamente');
     } catch (e) {
       print('❌ Error configurando tray manager: $e');
       // Continuar sin tray manager si hay error
@@ -166,7 +161,6 @@ Future<void> _mainInit(List<String> args) async {
     // Continuar sin notificaciones si hay error
   }
 
-  print('🚀 [${DateTime.now()}] Iniciando aplicación...');
   runApp(const MyApp());
 }
 
@@ -331,9 +325,6 @@ class _MyHomePageState extends State<MyHomePage>
     try {
       // Iniciar el servicio de primer plano
       final result = await PrinterForegroundService.startService();
-
-      print('✅ Servicio de primer plano iniciado: $result');
-
       // Configurar callback para recibir datos del servicio
       FlutterForegroundTask.addTaskDataCallback(_onReceiveTaskData);
     } catch (e) {
@@ -345,7 +336,7 @@ class _MyHomePageState extends State<MyHomePage>
     // 🛡️ PROTECCIÓN: Envolver en try-catch
     try {
       if (data is Map) {
-        print(
+       print(
           '📨 [${DateTime.now()}] Datos recibidos del servicio de primer plano: $data',
         );
 
@@ -402,10 +393,6 @@ class _MyHomePageState extends State<MyHomePage>
         listen: false,
       );
 
-      print(
-        '📱 [${DateTime.now()}] Cambio de estado del ciclo de vida: $state',
-      );
-
       switch (state) {
         case AppLifecycleState.paused:
           // App va a segundo plano o laptop entra en suspensión
@@ -447,15 +434,8 @@ class _MyHomePageState extends State<MyHomePage>
 
         case AppLifecycleState.resumed:
           // App vuelve a primer plano o laptop sale de suspensión
-          print(
-            '📱 [${DateTime.now()}] App reanudada (primer plano/despertar)',
-          );
-
           // En Windows, esperar un poco para que el sistema se estabilice después de suspensión
           if (Platform.isWindows) {
-            print(
-              '💻 Windows: Esperando 3 segundos para estabilización del sistema...',
-            );
             Future.delayed(const Duration(seconds: 3), () {
               if (mounted) {
                 // 🛡️ Marcar como NO suspendido
@@ -614,7 +594,7 @@ class _MyHomePageState extends State<MyHomePage>
                   if (Platform.isWindows ||
                       Platform.isLinux ||
                       Platform.isMacOS) {
-                    windowManager.close();
+                      windowManager.close();
                   } else {
                     SystemNavigator.pop();
                   }
@@ -631,11 +611,12 @@ class _MyHomePageState extends State<MyHomePage>
     webSocketService.onNewMessage = (String jsonMessage) async {
       // 🛡️ PROTECCIÓN: Envolver TODO en try-catch para evitar crashes
       try {
+ 
         print(
           '🖨️ [${DateTime.now()}] Procesando impresión automática para mensaje: ${jsonMessage.length > 100 ? "${jsonMessage.substring(0, 100)}..." : jsonMessage}',
         );
 
-        // Validar tipos permitidos antes de procesar
+       // Validar tipos permitidos antes de procesar
         try {
           // Intentar parsear el JSON, manejando posibles arrays
           dynamic parsedData = json.decode(jsonMessage);
@@ -675,14 +656,12 @@ class _MyHomePageState extends State<MyHomePage>
 
           if (type.toUpperCase() == 'NFC') {
             if (Platform.isAndroid || Platform.isIOS) {
-              print(
-                '📡 Tipo de mensaje es para lectura NFC, iniciando proceso de lectura...',
-              );
               await nfc.startNFC();
               return;
             } else if (Platform.isWindows) {
-              print(
-                '📡 Tipo de mensaje es para lectura NFC, iniciando proceso de lectura con PCSC...',
+              final nfcPcsc = Provider.of<NfcPcscService>(
+                context,
+                listen: false,
               );
               await nfcPcsc.startNFC(webSocketService);
               return;
@@ -707,14 +686,8 @@ class _MyHomePageState extends State<MyHomePage>
 
         if (printerService.selectedPrinter != null) {
           hasAvailablePrinters = true;
-          print(
-            '✅ Impresora seleccionada disponible: ${printerService.selectedPrinter?.deviceName}',
-          );
         } else if (printerService.connectedPrinters.isNotEmpty) {
           hasAvailablePrinters = true;
-          print(
-            '✅ Impresoras conectadas disponibles: ${printerService.connectedPrinters.keys.join(", ")}',
-          );
         }
 
         if (!hasAvailablePrinters) {
@@ -729,8 +702,6 @@ class _MyHomePageState extends State<MyHomePage>
           );
           return;
         }
-
-        print('📤 Enviando solicitud de impresión al PrintJobService...');
         final success = await printJobService.processPrintRequest(jsonMessage);
 
         if (success) {
@@ -868,8 +839,7 @@ class _MyHomePageState extends State<MyHomePage>
       NotificationsService().showNotification(
         id: 1, // ID único para esta notificación
         title: 'Anfibius Connect Nexus Utility',
-        body:
-            'La aplicación continúa ejecutándose en segundo plano. Haz clic en el ícono de la bandeja para mostrarla nuevamente.',
+        body:'La aplicación continúa ejecutándose en segundo plano. Haz clic en el ícono de la bandeja para mostrarla nuevamente.',
       );
     } catch (e, stackTrace) {
       print('❌ [${DateTime.now()}] Error en minimizeToTray: $e');

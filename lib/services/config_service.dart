@@ -345,4 +345,27 @@ class ConfigService {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_beepKey) ?? false;
   }
+
+  // MÉTODOS PARA LECTOR NFC
+  static const String _nfcReaderKey = 'saved_nfc_reader';
+
+  // Guardar el lector NFC detectado
+  static Future<void> saveNfcReader(String readerName) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_nfcReaderKey, readerName);
+  }
+
+  // Cargar el lector NFC guardado
+  static Future<String?> loadNfcReader() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_nfcReaderKey);
+  }
+
+  // Eliminar el lector NFC (Olvidar dispositivo)
+  static Future<void> removeNfcReader() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_nfcReaderKey);
+  }
+
+
 }
