@@ -1,8 +1,8 @@
 import 'dart:convert';
 
-import 'package:anfibius_uwu/models/print_request.dart';
-import 'package:anfibius_uwu/services/config_service.dart';
-import 'package:anfibius_uwu/services/printer_service.dart';
+import 'package:anfibius_connect/models/print_request.dart';
+import 'package:anfibius_connect/services/config_service.dart';
+import 'package:anfibius_connect/services/printer_service.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_esc_pos_utils/flutter_esc_pos_utils.dart';
 import 'package:image/image.dart';

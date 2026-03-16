@@ -1,5 +1,5 @@
-import 'package:anfibius_uwu/printers.dart';
-import 'package:anfibius_uwu/settings_screen.dart';
+import 'package:anfibius_connect/printers.dart';
+import 'package:anfibius_connect/settings_screen.dart';
 import 'package:flutter/material.dart';
 
 class Configuraciones extends StatefulWidget {

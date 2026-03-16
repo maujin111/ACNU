@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:anfibius_uwu/services/logger_service.dart';
+import 'package:anfibius_connect/services/logger_service.dart';
 import 'package:share_plus/share_plus.dart' if (dart.library.html) '';
 
 class LogsScreen extends StatefulWidget {

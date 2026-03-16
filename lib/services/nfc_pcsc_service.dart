@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart' hide Card; 
 import 'package:dart_pcsc/dart_pcsc.dart';
-import 'package:anfibius_uwu/services/websocket_service.dart';
-import 'package:anfibius_uwu/services/config_service.dart';
+import 'package:anfibius_connect/services/websocket_service.dart';
+import 'package:anfibius_connect/services/config_service.dart';
 
 class NfcPcscService extends ChangeNotifier {
   bool _isReading = false;

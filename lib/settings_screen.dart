@@ -1,9 +1,9 @@
-import 'package:anfibius_uwu/services/config_service.dart';
-import 'package:anfibius_uwu/services/startup_service.dart';
-import 'package:anfibius_uwu/services/websocket_service.dart';
+import 'package:anfibius_connect/services/config_service.dart';
+import 'package:anfibius_connect/services/startup_service.dart';
+import 'package:anfibius_connect/services/websocket_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:anfibius_uwu/main.dart';
+import 'package:anfibius_connect/main.dart';
 import 'package:window_manager/window_manager.dart';
 import 'dart:io' show Platform;
 import 'package:permission_handler/permission_handler.dart';

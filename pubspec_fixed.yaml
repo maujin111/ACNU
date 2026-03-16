@@ -83,11 +83,11 @@ flutter:
     - "assets/icon/OIP.png"
 
 msix_config:
-  display_name: Anfibius Web Utility
+  display_name: Anfibius Connect
   publisher_display_name: Corporacion Anfibius
-  identity_name: com.corporacion.anfibius
+  identity_name: Corp.Anfibius.AnfibiusConnect
   msix_version: 1.0.0.0
   logo_path: assets/icon/icon.png
   capabilities: 'internetClient,removableStorage'
   store: true
-  publisher: CN=f7cdbea5-33a8-4997-b46f-97d9b0d40ef4
+  publisher: CN=EE5F7164-63B8-47BB-A93B-7709F27A1A24

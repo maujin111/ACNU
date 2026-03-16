@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
-import 'package:anfibius_uwu/main.dart';
+import 'package:anfibius_connect/main.dart';
 
 class NotificationsService {
   static final NotificationsService _instance =

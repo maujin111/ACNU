@@ -1,29 +1,29 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
-import 'package:anfibius_uwu/configuraciones.dart';
-import 'package:anfibius_uwu/dispositivos.dart';
-import 'package:anfibius_uwu/nfc_reader_screen.dart';
-import 'package:anfibius_uwu/services/nfc_pcsc_service.dart';
-import 'package:anfibius_uwu/services/nfc_service.dart';
-import 'package:anfibius_uwu/services/print_job_service.dart';
-import 'package:anfibius_uwu/services/printer_service.dart';
-import 'package:anfibius_uwu/services/startup_service.dart';
-import 'package:anfibius_uwu/services/websocket_service.dart';
-import 'package:anfibius_uwu/services/logger_service.dart';
-import 'package:anfibius_uwu/settings_screen.dart';
-import 'package:anfibius_uwu/logs_screen.dart';
+import 'package:anfibius_connect/configuraciones.dart';
+import 'package:anfibius_connect/dispositivos.dart';
+import 'package:anfibius_connect/nfc_reader_screen.dart';
+import 'package:anfibius_connect/services/nfc_pcsc_service.dart';
+import 'package:anfibius_connect/services/nfc_service.dart';
+import 'package:anfibius_connect/services/print_job_service.dart';
+import 'package:anfibius_connect/services/printer_service.dart';
+import 'package:anfibius_connect/services/startup_service.dart';
+import 'package:anfibius_connect/services/websocket_service.dart';
+import 'package:anfibius_connect/services/logger_service.dart';
+import 'package:anfibius_connect/settings_screen.dart';
+import 'package:anfibius_connect/logs_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:anfibius_uwu/printers.dart';
-import 'package:anfibius_uwu/services/notifications_service.dart';
+import 'package:anfibius_connect/printers.dart';
+import 'package:anfibius_connect/services/notifications_service.dart';
 
 // Solo importar dependencias de escritorio en plataformas compatibles
 import 'package:package_info_plus/package_info_plus.dart';
 
 // Importaciones condicionales para escritorio
-import 'package:anfibius_uwu/secondary_window.dart'
+import 'package:anfibius_connect/secondary_window.dart'
     if (dart.library.html) 'package:anfibius_uwu/secondary_window_stub.dart';
 import 'package:tray_manager/tray_manager.dart'
     if (dart.library.html) 'package:anfibius_uwu/platform_stubs.dart';
@@ -36,15 +36,18 @@ import 'package:desktop_multi_window/desktop_multi_window.dart'
     if (dart.library.html) 'package:anfibius_uwu/platform_stubs.dart';
 
 // Importar servicio de primer plano para Android
-import 'package:anfibius_uwu/services/foreground_service.dart';
+import 'package:anfibius_connect/services/foreground_service.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
-import 'package:anfibius_uwu/nfc_reader_screen.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>(); 
-final FlutterLocalNotificationsPlugin notifications = FlutterLocalNotificationsPlugin();
+import 'package:anfibius_connect/info_screen.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'package:permission_handler/permission_handler.dart';
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+final FlutterLocalNotificationsPlugin notifications =
+    FlutterLocalNotificationsPlugin();
 
 void main(List<String> args) async {
   // Capturar TODOS los errores no manejados (síncronos Y asíncronos)
@@ -75,7 +78,9 @@ Future<void> _mainInit(List<String> args) async {
     // NO dejar que la app crashee - solo loggear el error
   };
 
-  WidgetsFlutterBinding.ensureInitialized();
+  //WidgetsFlutterBinding.ensureInitialized();
+  WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
   // 🆕 Inicializar servicios
   try {
@@ -124,7 +129,6 @@ Future<void> _mainInit(List<String> args) async {
                 : 'Anfibius Connect Nexus Utility',
         appPath: Platform.resolvedExecutable,
       );
-
     } catch (e) {
       print('❌ Error configurando launch at startup: $e');
     }
@@ -162,6 +166,7 @@ Future<void> _mainInit(List<String> args) async {
   }
 
   runApp(const MyApp());
+  FlutterNativeSplash.remove();
 }
 
 bool _isDesktop() {
@@ -213,9 +218,7 @@ class MyApp extends StatelessWidget {
                 ),
                 themeMode: themeService.themeMode,
                 home: const MyHomePage(title: 'Anfibius Connect Nexus Utility'),
-                routes: {
-                  '/nfc': (context) => const NfcScreen(),
-                },
+                routes: {'/nfc': (context) => const NfcScreen()},
               ),
             );
           }
@@ -238,9 +241,7 @@ class MyApp extends StatelessWidget {
             ),
             themeMode: themeService.themeMode,
             home: const MyHomePage(title: 'Anfibius Connect Nexus Utility'),
-            routes: {
-                  '/nfc': (context) => const NfcScreen(),
-                },
+            routes: {'/nfc': (context) => const NfcScreen()},
           );
         },
       ),
@@ -319,6 +320,9 @@ class _MyHomePageState extends State<MyHomePage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _setupAutoPrint();
     });
+
+    // Solicitar permisos críticos al inicio
+    _pedirPermisosIniciales();
   }
 
   Future<void> _startForegroundService() async {
@@ -332,11 +336,24 @@ class _MyHomePageState extends State<MyHomePage>
     }
   }
 
+  // Función para solicitar permisos al inicio
+  Future<void> _pedirPermisosIniciales() async {
+    // Lista de permisos críticos para el POS y el trabajo en segundo plano
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.notification,      // Para el Foreground Task / Notificación persistente
+      Permission.bluetoothScan,     // Para buscar impresoras
+      Permission.bluetoothConnect,  // Para enviar a imprimir
+      Permission.location,          // Requisito de Android para usar Bluetooth
+    ].request();
+  }
+
+
+
   void _onReceiveTaskData(Object data) {
     // 🛡️ PROTECCIÓN: Envolver en try-catch
     try {
       if (data is Map) {
-       print(
+        print(
           '📨 [${DateTime.now()}] Datos recibidos del servicio de primer plano: $data',
         );
 
@@ -594,7 +611,7 @@ class _MyHomePageState extends State<MyHomePage>
                   if (Platform.isWindows ||
                       Platform.isLinux ||
                       Platform.isMacOS) {
-                      windowManager.close();
+                    windowManager.close();
                   } else {
                     SystemNavigator.pop();
                   }
@@ -611,12 +628,11 @@ class _MyHomePageState extends State<MyHomePage>
     webSocketService.onNewMessage = (String jsonMessage) async {
       // 🛡️ PROTECCIÓN: Envolver TODO en try-catch para evitar crashes
       try {
- 
         print(
           '🖨️ [${DateTime.now()}] Procesando impresión automática para mensaje: ${jsonMessage.length > 100 ? "${jsonMessage.substring(0, 100)}..." : jsonMessage}',
         );
 
-       // Validar tipos permitidos antes de procesar
+        // Validar tipos permitidos antes de procesar
         try {
           // Intentar parsear el JSON, manejando posibles arrays
           dynamic parsedData = json.decode(jsonMessage);
@@ -839,7 +855,8 @@ class _MyHomePageState extends State<MyHomePage>
       NotificationsService().showNotification(
         id: 1, // ID único para esta notificación
         title: 'Anfibius Connect Nexus Utility',
-        body:'La aplicación continúa ejecutándose en segundo plano. Haz clic en el ícono de la bandeja para mostrarla nuevamente.',
+        body:
+            'La aplicación continúa ejecutándose en segundo plano. Haz clic en el ícono de la bandeja para mostrarla nuevamente.',
       );
     } catch (e, stackTrace) {
       print('❌ [${DateTime.now()}] Error en minimizeToTray: $e');
@@ -931,6 +948,16 @@ class _MyHomePageState extends State<MyHomePage>
         ),
         surfaceTintColor: Colors.lightGreen,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'Acerca de',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const InfoScreen()),
+              );
+            },
+          ),
           // Botón para ver logs
           IconButton(
             icon: const Icon(Icons.article_outlined),

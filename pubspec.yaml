@@ -1,8 +1,8 @@
-name: anfibius_uwu
+name: anfibius_connect
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 2.0.0
 
 environment:
   sdk: ^3.7.2
@@ -53,9 +53,9 @@ dependencies:
   flutter_nfc_kit: ^3.4.1
   # PCSC (solo para Windows)
   dart_pcsc: ^2.0.2
-
-
- 
+  # Splash screen
+  flutter_native_splash: 2.4.4
+  flutter_svg: ^2.2.4
 
 dev_dependencies:
   flutter_test:
@@ -68,34 +68,49 @@ dev_dependencies:
 flutter_launcher_icons:
   android: "ic_launcher"
   ios: true
-  image_path: "assets/icon/icon.png"
+  image_path: "assets/icon/anficon.png"
   min_sdk_android: 21
   web:
     generate: true
-    image_path: "assets/icon/icon.png"
+    image_path: "assets/icon/anficon.png"
   windows:
     generate: true
     image_path: "assets/icon/app_icon.ico"
     icon_size: 48
   macos:
     generate: true
-    image_path: "assets/icon/icon.png"
+    image_path: "assets/icon/anficon.png"
 
 flutter:
   uses-material-design: true
   assets:
     - "assets/"
-    - "assets/icon/icon.png"
+    - "assets/icon/anficon.png"
     - "assets/icon/icon.ico"
     - "assets/icon/app_icon.ico"
     - "assets/icon/OIP.png"
+    - "assets/icon/splash.png"
+    - "assets/icon/logo.png"
+    - "assets/icon/logo.svg"
 
 msix_config:
-  display_name: Anfibius Web Utility
-  publisher_display_name: Corporacion Anfibius
-  identity_name: com.corporacion.anfibius
+  display_name: AnfibiusConnect
+  publisher_display_name: Corp. Anfibius
+  identity_name: Corp.Anfibius.AnfibiusConnect
   msix_version: 1.0.0.0
-  logo_path: assets/icon/icon.png
+  logo_path: assets/icon/anficon.png
   capabilities: 'internetClient,removableStorage'
   store: true
-  publisher: CN=f7cdbea5-33a8-4997-b46f-97d9b0d40ef4
+  publisher: CN=EE5F7164-63B8-47BB-A93B-7709F27A1A24
+
+
+flutter_native_splash:
+  color: "#f4fbed"
+  color_dark: "#121212"
+  image: assets/icon/splash.png
+  fullscreen: true 
+  
+  android_12:
+    image: assets/icon/splash.png
+    color: "#f4fbed"
+    color_dark: "#121212"

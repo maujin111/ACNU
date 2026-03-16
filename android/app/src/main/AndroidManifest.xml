@@ -17,7 +17,7 @@
 
 
     <application
-        android:label="Anfibius web utility"
+        android:label="Anfibius Connect"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         

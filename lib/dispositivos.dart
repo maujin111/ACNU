@@ -1,13 +1,13 @@
 import 'dart:convert';
-import 'package:anfibius_uwu/services/nfc_service.dart';
-import 'package:anfibius_uwu/services/print_job_service.dart';
-import 'package:anfibius_uwu/services/printer_service.dart';
-import 'package:anfibius_uwu/services/websocket_service.dart';
+import 'package:anfibius_connect/services/nfc_service.dart';
+import 'package:anfibius_connect/services/print_job_service.dart';
+import 'package:anfibius_connect/services/printer_service.dart';
+import 'package:anfibius_connect/services/websocket_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_pos_printer_platform_image_3/flutter_pos_printer_platform_image_3.dart';
 import 'package:flutter_esc_pos_utils/flutter_esc_pos_utils.dart';
-import 'package:anfibius_uwu/services/nfc_pcsc_service.dart';
+import 'package:anfibius_connect/services/nfc_pcsc_service.dart';
 
 class Dispositivos extends StatefulWidget {
   const Dispositivos({super.key});

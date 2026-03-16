@@ -1164,7 +1164,7 @@ class WebSocketService extends ChangeNotifier {
       }
 
       // Notificar a los callbacks registrados
-      if (onNewMessage != null) {
+      if (onNewMessage != null && shouldAddToHistory) {
         print('Enviando mensaje a impresora: [$jsonMessage]');
         try {
           onNewMessage!(jsonMessage);

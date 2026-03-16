@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:anfibius_uwu/services/config_service.dart';
-import 'package:anfibius_uwu/services/printer_service.dart';
+import 'package:anfibius_connect/services/config_service.dart';
+import 'package:anfibius_connect/services/printer_service.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_pos_printer_platform_image_3/flutter_pos_printer_platform_image_3.dart';
