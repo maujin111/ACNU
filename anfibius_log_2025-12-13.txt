@@ -1,0 +1,42 @@
+================================================================================
+ANFIBIUS CONNECT NEXUS UTILITY - LOG
+Fecha: 2025-12-13
+Inicio de sesión: 08:00:53
+================================================================================
+
+[08:00:53.966] [INFO] 📝 Logger Service iniciado correctamente
+[08:00:53.966] [SUCCESS] ✅ Logger Service inicializado
+[08:02:54.014] [DEBUG] 🐛 Watchdog check - Última actividad hace: 1 minutos
+[08:04:54.015] [DEBUG] 🐛 Watchdog check - Última actividad hace: 3 minutos
+[08:04:54.015] [WARN] ⚠️ WATCHDOG: Detectado estado zombie (sin actividad por 3 min)
+[08:06:54.014] [DEBUG] 🐛 Watchdog check - Última actividad hace: 5 minutos
+[08:06:54.014] [WARN] ⚠️ WATCHDOG: Detectado estado zombie (sin actividad por 5 min)
+[08:07:00.065] [INFO] ℹ️ Reconexión manual solicitada
+[08:07:00.065] [DEBUG] 🐛 Estado actual: disposed=false, connected=false, connecting=true, autoReconnect=true, suspending=false, hasToken=true
+[08:07:00.065] [SUCCESS] ✅ AutoReconnect habilitado
+[08:07:00.065] [INFO] ℹ️ Limpiando conexión existente antes de reconectar...
+[08:07:00.065] [INFO] ℹ️ EMERGENCY CLEANUP - Limpiando recursos zombies...
+[08:07:00.065] [SUCCESS] ✅ Emergency cleanup completado
+[08:07:01.068] [INFO] ℹ️ Iniciando reconexión después de cleanup...
+[08:08:54.015] [DEBUG] 🐛 Watchdog check - Última actividad hace: 1 minutos
+[08:10:54.014] [DEBUG] 🐛 Watchdog check - Última actividad hace: 3 minutos
+[08:10:54.014] [WARN] ⚠️ WATCHDOG: Detectado estado zombie (sin actividad por 3 min)
+[08:10:54.014] [WARN] ⚠️ WATCHDOG: Conectado pero sin actividad - Posible estado zombie
+[08:10:54.014] [DEBUG] 🐛 WATCHDOG: Ping de verificación enviado
+[08:18:21.887] [INFO] 📝 Logger Service iniciado correctamente
+[08:18:21.887] [SUCCESS] ✅ Logger Service inicializado
+[08:18:21.929] [INFO] ℹ️ Iniciando proceso de conexión WebSocket...
+[08:18:21.929] [INFO] ℹ️ Intentando conectar a: wss://soporte.anfibius.net:3300/token123
+[08:18:22.100] [SUCCESS] ✅ Conectado exitosamente a: wss://soporte.anfibius.net:3300/token123
+[08:18:42.614] [INFO] ℹ️ Programando reconexión #1 en 5s...
+[08:18:47.617] [INFO] ℹ️ Ejecutando intento de reconexión #0
+[08:18:47.617] [INFO] ℹ️ Iniciando proceso de conexión WebSocket...
+[08:18:47.617] [INFO] ℹ️ Intentando conectar a: wss://soporte.anfibius.net:3300/token123
+[08:18:47.629] [WARN] ⚠️ Fallo al conectar: Error al conectar con wss://soporte.anfibius.net:3300/token123: SocketException: Failed host lookup: 'soporte.anfibius.net' (OS Error: No such host is known, errno = 11001)
+[08:18:47.629] [INFO] ℹ️ Intentando conectar a: ws://soporte.anfibius.net:3300/token123
+[08:18:47.640] [WARN] ⚠️ Fallo al conectar: Error al conectar con ws://soporte.anfibius.net:3300/token123: WebSocketChannelException: SocketException: Failed host lookup: 'soporte.anfibius.net' (OS Error: No such host is known, errno = 11001)
+[08:18:48.808] [WARN] ⚠️ Ya hay una conexión en curso, abortando
+[08:20:21.928] [DEBUG] 🐛 Watchdog check - Última actividad hace: 1 minutos
+[08:21:09.149] [INFO] ℹ️ Iniciando proceso de conexión WebSocket...
+[08:22:21.929] [DEBUG] 🐛 Watchdog check - Última actividad hace: 3 minutos
+[08:22:21.929] [WARN] ⚠️ WATCHDOG: Detectado estado zombie (sin actividad por 3 min)

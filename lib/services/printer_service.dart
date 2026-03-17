@@ -1,9 +1,23 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:collection';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_pos_printer_platform_image_3/flutter_pos_printer_platform_image_3.dart';
 import 'package:flutter_esc_pos_utils/flutter_esc_pos_utils.dart';
 import '../services/config_service.dart';
+
+// Clase para representar un trabajo de impresión en cola
+class _PrintJob {
+  final String printerName;
+  final List<int> bytes;
+  final Completer<bool> completer;
+
+  _PrintJob({
+    required this.printerName,
+    required this.bytes,
+    required this.completer,
+  });
+}
 
 class PrinterService extends ChangeNotifier {
   var defaultPrinterType = PrinterType.bluetooth;
@@ -11,6 +25,20 @@ class PrinterService extends ChangeNotifier {
   var _reconnect = false;
   var printerManager = PrinterManager.instance;
   var devices = <BluetoothPrinter>[];
+
+  // Colas de impresión por tipo de impresora
+  final Map<PrinterType, Queue<_PrintJob>> _printQueues = {
+    PrinterType.usb: Queue<_PrintJob>(),
+    PrinterType.bluetooth: Queue<_PrintJob>(),
+    PrinterType.network: Queue<_PrintJob>(),
+  };
+
+  // Flags para saber si hay un trabajo de impresión en progreso por tipo
+  final Map<PrinterType, bool> _isPrinting = {
+    PrinterType.usb: false,
+    PrinterType.bluetooth: false,
+    PrinterType.network: false,
+  };
 
   // Lista de impresoras virtuales a ignorar
   final List<String> _virtualPrintersToIgnore = [
@@ -69,6 +97,9 @@ class PrinterService extends ChangeNotifier {
   Timer? _connectionCheckTimer;
   // Callback para notificar cambios en el estado de conexión
   Function(bool isConnected, String? printerName)? onConnectionChanged;
+  
+  // Flag para saber si el servicio está pausado (Windows en suspensión)
+  bool _isPaused = false;
 
   PrinterService() {
     // En Windows, preferir USB por defecto pero permitir Bluetooth también
@@ -189,6 +220,55 @@ class PrinterService extends ChangeNotifier {
   // Obtener lista de nombres de impresoras conectadas
   List<String> get connectedPrinterNames => _connectedPrinters.keys.toList();
 
+  // GETTERS Y MÉTODOS PARA GESTIÓN DE COLAS
+  // Obtener el tamaño de la cola para un tipo de impresora
+  int getQueueSize(PrinterType type) => _printQueues[type]?.length ?? 0;
+
+  // Verificar si hay trabajos en cola o en progreso para un tipo
+  bool isQueueActive(PrinterType type) =>
+      (_isPrinting[type] ?? false) || getQueueSize(type) > 0;
+
+  // Limpiar la cola de un tipo específico (útil en caso de errores)
+  void clearQueue(PrinterType type) {
+    final queue = _printQueues[type];
+    if (queue != null) {
+      print('🗑️ [COLA] Limpiando cola para ${type}. Trabajos descartados: ${queue.length}');
+      // Completar todos los trabajos pendientes con false
+      while (queue.isNotEmpty) {
+        final job = queue.removeFirst();
+        if (!job.completer.isCompleted) {
+          job.completer.complete(false);
+        }
+      }
+    }
+  }
+
+  // Limpiar todas las colas
+  void clearAllQueues() {
+    print('🗑️ [COLA] Limpiando todas las colas');
+    for (final type in PrinterType.values) {
+      clearQueue(type);
+    }
+  }
+
+  // Obtener información de estado de todas las colas
+  Map<String, dynamic> getQueuesStatus() {
+    return {
+      'usb': {
+        'size': getQueueSize(PrinterType.usb),
+        'printing': _isPrinting[PrinterType.usb] ?? false,
+      },
+      'bluetooth': {
+        'size': getQueueSize(PrinterType.bluetooth),
+        'printing': _isPrinting[PrinterType.bluetooth] ?? false,
+      },
+      'network': {
+        'size': getQueueSize(PrinterType.network),
+        'printing': _isPrinting[PrinterType.network] ?? false,
+      },
+    };
+  }
+
   set isBle(bool value) {
     _isBle = value;
     notifyListeners();
@@ -276,15 +356,28 @@ class PrinterService extends ChangeNotifier {
     // Cancelar cualquier timer existente
     _connectionCheckTimer?.cancel();
 
+    // No iniciar timer si está pausado (Windows en suspensión)
+    if (_isPaused) {
+      print('⏸️ Servicio pausado, no se inicia timer de verificación');
+      return;
+    }
+
     // Crear un nuevo timer para verificar la conexión cada 5 segundos
     _connectionCheckTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      // No verificar si está pausado
+      if (_isPaused) {
+        return;
+      }
       _checkPrinterConnection();
     });
   }
 
   // Verificar el estado de conexión de la impresora
   Future<void> _checkPrinterConnection() async {
-    if (selectedPrinter == null) return;
+    // 🛡️ No verificar si está pausado o no hay impresora
+    if (_isPaused || selectedPrinter == null) {
+      return;
+    }
 
     try {
       bool isConnectedNow = false;
@@ -304,7 +397,7 @@ class PrinterService extends ChangeNotifier {
         case PrinterType.network:
           // Para impresoras de red, intentamos una "ping" básica
           try {
-            // Verificamos la impresora intentando abrir una conexión
+            // 🛡️ Proteger la llamada a connect con try-catch
             await printerManager.connect(
               type: PrinterType.network,
               model: TcpPrinterInput(
@@ -335,6 +428,7 @@ class PrinterService extends ChangeNotifier {
       }
     } catch (e) {
       print('❌ Error al verificar estado de la impresora: $e');
+      // No propagar el error para evitar crashes
     }
   }
 
@@ -959,7 +1053,7 @@ class PrinterService extends ChangeNotifier {
     _printRawData(bytes);
   }
 
-  // NUEVO: Imprimir bytes a una impresora específica
+  // NUEVO: Imprimir bytes a una impresora específica con sistema de cola
   Future<bool> printBytesToPrinter(List<int> bytes, String printerName) async {
     final printer = _connectedPrinters[printerName];
     if (printer == null) {
@@ -967,24 +1061,239 @@ class PrinterService extends ChangeNotifier {
       return false;
     }
 
-    if (!isPrinterConnected(printerName)) {
-      print('❌ Impresora no conectada: $printerName');
-      return false;
+    final printerType = printer.typePrinter;
+    print(
+      '📥 [COLA] Encolando trabajo de impresión para $printerName (${printerType})',
+    );
+
+    // Crear un completer para esperar el resultado
+    final completer = Completer<bool>();
+
+    // Crear el trabajo de impresión
+    final job = _PrintJob(
+      printerName: printerName,
+      bytes: bytes,
+      completer: completer,
+    );
+
+    // Agregar a la cola correspondiente
+    _printQueues[printerType]!.add(job);
+    print(
+      '📋 [COLA] Trabajo agregado. Tamaño de cola para ${printerType}: ${_printQueues[printerType]!.length}',
+    );
+
+    // Iniciar el procesamiento de la cola si no está en progreso
+    _processQueue(printerType);
+
+    // Esperar el resultado
+    return completer.future;
+  }
+
+  // Procesar la cola de impresión para un tipo específico de impresora
+  Future<void> _processQueue(PrinterType printerType) async {
+    // Si ya hay un trabajo en progreso, no hacer nada
+    if (_isPrinting[printerType] == true) {
+      print('⏳ [COLA] Ya hay un trabajo en progreso para ${printerType}');
+      return;
     }
 
-    print('🖨️ Imprimiendo en: $printerName (${printer.typePrinter})');
+    // Obtener la cola
+    final queue = _printQueues[printerType]!;
 
+    // Si la cola está vacía, terminar
+    if (queue.isEmpty) {
+      print('✅ [COLA] Cola vacía para ${printerType}');
+      return;
+    }
+
+    // Marcar que estamos imprimiendo
+    _isPrinting[printerType] = true;
+
+    // Obtener el siguiente trabajo
+    final job = queue.removeFirst();
+    print(
+      '🔄 [COLA] Procesando trabajo para ${job.printerName}. Quedan ${queue.length} trabajos en cola',
+    );
+
+    bool success = false;
     try {
-      await printerManager.send(type: printer.typePrinter, bytes: bytes);
-      print('✅ Impresión enviada exitosamente a: $printerName');
-      return true;
+      // Ejecutar el trabajo de impresión con timeout de 30 segundos
+      success = await _executePrintJob(job).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          print('⏰ [COLA] Timeout al procesar trabajo para ${job.printerName}');
+          return false;
+        },
+      );
     } catch (e) {
-      print('❌ Error al imprimir en $printerName: $e');
-      return false;
+      print('❌ [COLA] Error al procesar trabajo para ${job.printerName}: $e');
+      success = false;
+    }
+
+    // Completar el futuro con el resultado
+    if (!job.completer.isCompleted) {
+      job.completer.complete(success);
+    }
+
+    // Marcar que terminamos de imprimir
+    _isPrinting[printerType] = false;
+
+    // Procesar el siguiente trabajo en la cola (si hay)
+    if (queue.isNotEmpty) {
+      print(
+        '🔄 [COLA] Procesando siguiente trabajo para ${printerType}...',
+      );
+      // Usar scheduleMicrotask para evitar stack overflow en colas largas
+      scheduleMicrotask(() => _processQueue(printerType));
+    } else {
+      print('✅ [COLA] Todos los trabajos completados para ${printerType}');
     }
   }
 
-  // NUEVO: Generar bytes de impresión usando el tamaño de papel específico de la impresora
+  // Ejecutar un trabajo de impresión (método interno)
+  Future<bool> _executePrintJob(_PrintJob job) async {
+    final printerName = job.printerName;
+    final bytes = job.bytes;
+    final printer = _connectedPrinters[printerName];
+
+    if (printer == null) {
+      print('❌ [EXEC] Impresora no encontrada: $printerName');
+      return false;
+    }
+
+    print('🖨️ [EXEC] Ejecutando impresión en: $printerName (${printer.typePrinter})');
+    print('📋 [EXEC] Parámetros de impresora:');
+    print('   - Nombre: ${printer.deviceName}');
+    print('   - Tipo: ${printer.typePrinter}');
+    if (printer.typePrinter == PrinterType.usb) {
+      print('   - VendorID: ${printer.vendorId}');
+      print('   - ProductID: ${printer.productId}');
+    } else if (printer.typePrinter == PrinterType.bluetooth) {
+      print('   - Address: ${printer.address}');
+      print('   - BLE: ${printer.isBle}');
+    } else if (printer.typePrinter == PrinterType.network) {
+      print('   - IP: ${printer.address}');
+      print('   - Port: ${printer.port}');
+    }
+
+    try {
+      // CRÍTICO: Desconectar primero para limpiar la conexión anterior
+      print(
+        '🔌 [EXEC] Desconectando cualquier conexión previa del tipo ${printer.typePrinter}...',
+      );
+      try {
+        await printerManager.disconnect(type: printer.typePrinter);
+        // Dar tiempo para que se complete la desconexión
+        await Future.delayed(const Duration(milliseconds: 300));
+      } catch (e) {
+        print('⚠️ [EXEC] No había conexión previa o error al desconectar: $e');
+      }
+
+      // IMPORTANTE: Reconectar a la impresora específica antes de imprimir
+      // Esto asegura que los bytes se envíen a la impresora correcta
+      bool connected = false;
+
+      switch (printer.typePrinter) {
+        case PrinterType.usb:
+          try {
+            print('🔌 [EXEC] Conectando a impresora USB específica: $printerName');
+            print(
+              '   → VendorID: ${printer.vendorId}, ProductID: ${printer.productId}',
+            );
+            await printerManager.connect(
+              type: printer.typePrinter,
+              model: UsbPrinterInput(
+                name: printer.deviceName,
+                productId: printer.productId,
+                vendorId: printer.vendorId,
+              ),
+            );
+            connected = true;
+            print('✅ [EXEC] Conectado a impresora USB: $printerName');
+          } catch (e) {
+            print('⚠️ [EXEC] Error al conectar impresora USB $printerName: $e');
+            // Intentar imprimir de todos modos
+            connected = true;
+          }
+          break;
+
+        case PrinterType.bluetooth:
+          try {
+            print(
+              '🔌 [EXEC] Conectando a impresora Bluetooth específica: $printerName',
+            );
+            print('   → Address: ${printer.address}');
+            await printerManager.connect(
+              type: printer.typePrinter,
+              model: BluetoothPrinterInput(
+                name: printer.deviceName,
+                address: printer.address!,
+                isBle: printer.isBle ?? false,
+                autoConnect: _reconnect,
+              ),
+            );
+            connected = true;
+            print('✅ [EXEC] Conectado a impresora Bluetooth: $printerName');
+          } catch (e) {
+            print(
+              '⚠️ [EXEC] Error al conectar impresora Bluetooth $printerName: $e',
+            );
+            connected = false;
+          }
+          break;
+
+        case PrinterType.network:
+          try {
+            print(
+              '🔌 [EXEC] Conectando a impresora de red específica: $printerName',
+            );
+            print('   → IP: ${printer.address}:${printer.port ?? "9100"}');
+            await printerManager.connect(
+              type: printer.typePrinter,
+              model: TcpPrinterInput(
+                ipAddress: printer.address!,
+                port: int.tryParse(printer.port ?? '9100') ?? 9100,
+              ),
+            );
+            connected = true;
+            print('✅ [EXEC] Conectado a impresora de red: $printerName');
+          } catch (e) {
+            print(
+              '⚠️ [EXEC] Error al conectar impresora de red $printerName: $e',
+            );
+            connected = false;
+          }
+          break;
+      }
+
+      if (!connected) {
+        print('❌ [EXEC] No se pudo conectar a la impresora: $printerName');
+        _connectionStatus[printerName] = false;
+        notifyListeners();
+        return false;
+      }
+
+      // Dar tiempo para que se estabilice la conexión
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      // Enviar los bytes a la impresora
+      print('📤 [EXEC] Enviando ${bytes.length} bytes a $printerName...');
+      await printerManager.send(type: printer.typePrinter, bytes: bytes);
+      print('✅ [EXEC] Impresión enviada exitosamente a: $printerName');
+
+      // Actualizar estado de conexión
+      _connectionStatus[printerName] = true;
+      notifyListeners();
+
+      return true;
+    } catch (e) {
+      print('❌ [EXEC] Error al imprimir en $printerName: $e');
+      _connectionStatus[printerName] = false;
+      notifyListeners();
+      return false;
+    }
+  } // NUEVO: Generar bytes de impresión usando el tamaño de papel específico de la impresora
+
   Future<List<int>> generatePrintBytesForPrinter(
     String printerName,
     String content, {
@@ -1560,23 +1869,134 @@ class PrinterService extends ChangeNotifier {
     }
   }
 
+  // **NUEVO: Buscar impresora por nombre del dispositivo**
+  dynamic findPrinterByName(String printerName) {
+    // Buscar en impresoras conectadas por nombre exacto
+    for (var entry in _connectedPrinters.entries) {
+      if (entry.value.deviceName == printerName) {
+        print('🔍 Impresora encontrada por nombre exacto: $printerName');
+        return entry.value;
+      }
+    }
+
+    // Buscar por nombre parcial (ignorando mayúsculas/minúsculas)
+    for (var entry in _connectedPrinters.entries) {
+      if (entry.value.deviceName?.toLowerCase().contains(
+            printerName.toLowerCase(),
+          ) ==
+          true) {
+        print(
+          '🔍 Impresora encontrada por nombre parcial: ${entry.value.deviceName} (buscado: $printerName)',
+        );
+        return entry.value;
+      }
+    }
+
+    print('❌ No se encontró impresora con nombre: $printerName');
+    print(
+      '📋 Impresoras disponibles: ${_connectedPrinters.values.map((p) => p.deviceName).join(", ")}',
+    );
+    return null;
+  }
+
+  // **NUEVO: Seleccionar impresora por nombre**
+  bool selectPrinterByName(String printerName) {
+    final printer = findPrinterByName(printerName);
+    if (printer != null) {
+      // Buscar el ID de esta impresora
+      for (var entry in _connectedPrinters.entries) {
+        if (entry.value == printer) {
+          selectedPrinter = printer;
+          notifyListeners();
+          print('✅ Impresora seleccionada por nombre: ${printer.deviceName}');
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /// Pausar el servicio (cuando Windows entra en suspensión)
+  void pauseService() {
+    print('⏸️ [PrinterService] Pausando servicio de impresoras...');
+    _isPaused = true;
+    
+    // Cancelar timer de verificación para evitar ACCESS_VIOLATION en FFI
+    try {
+      _connectionCheckTimer?.cancel();
+      _connectionCheckTimer = null;
+      print('✅ [PrinterService] Timer de verificación cancelado');
+    } catch (e) {
+      print('⚠️ [PrinterService] Error cancelando timer: $e');
+    }
+  }
+  
+  /// Reanudar el servicio (cuando Windows sale de suspensión)
+  void resumeService() {
+    print('▶️ [PrinterService] Reanudando servicio de impresoras...');
+    _isPaused = false;
+    
+    // Reiniciar timer de verificación después de un delay
+    Future.delayed(const Duration(seconds: 3), () {
+      if (!_isPaused) {
+        print('🔄 [PrinterService] Reiniciando timer de verificación...');
+        _initConnectionChecker();
+      }
+    });
+  }
+
   // Método para liberar recursos cuando se destruye la instancia
   @override
   void dispose() {
+    print('🛑 [PrinterService] Limpiando recursos...');
+    
+    // Marcar como pausado para detener operaciones
+    _isPaused = true;
+    
     // Cancelar suscripciones
-    _subscription?.cancel();
-    _subscriptionBtStatus?.cancel();
-    _subscriptionUsbStatus?.cancel();
+    try {
+      _subscription?.cancel();
+      _subscription = null;
+    } catch (e) {
+      print('⚠️ [PrinterService] Error cancelando subscription: $e');
+    }
+    
+    try {
+      _subscriptionBtStatus?.cancel();
+      _subscriptionBtStatus = null;
+    } catch (e) {
+      print('⚠️ [PrinterService] Error cancelando BT status subscription: $e');
+    }
+    
+    try {
+      _subscriptionUsbStatus?.cancel();
+      _subscriptionUsbStatus = null;
+    } catch (e) {
+      print('⚠️ [PrinterService] Error cancelando USB status subscription: $e');
+    }
 
     // Cancelar el timer de verificación
-    _connectionCheckTimer?.cancel();
+    try {
+      _connectionCheckTimer?.cancel();
+      _connectionCheckTimer = null;
+    } catch (e) {
+      print('⚠️ [PrinterService] Error cancelando connection check timer: $e');
+    }
 
     // Desconectar de la impresora si está conectada
     if (_isConnected && selectedPrinter != null) {
-      printerManager.disconnect(type: selectedPrinter!.typePrinter);
+      try {
+        printerManager.disconnect(type: selectedPrinter!.typePrinter);
+      } catch (e) {
+        print('⚠️ [PrinterService] Error desconectando impresora: $e');
+      }
     }
+    
+    // 🆕 Limpiar listas para evitar memory leaks
+    devices.clear();
 
     super.dispose();
+    print('✅ [PrinterService] Recursos liberados');
   }
 
   // Olvidar la impresora seleccionada actualmente

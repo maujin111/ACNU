@@ -1,16 +1,16 @@
 import 'dart:convert';
 
-import 'package:anfibius_uwu/models/print_request.dart';
-import 'package:anfibius_uwu/services/config_service.dart';
-import 'package:anfibius_uwu/services/printer_service.dart';
+import 'package:anfibius_connect/models/print_request.dart';
+import 'package:anfibius_connect/services/config_service.dart';
+import 'package:anfibius_connect/services/printer_service.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_esc_pos_utils/flutter_esc_pos_utils.dart';
 import 'package:image/image.dart';
 
 // Función utilitaria para formatear valores numéricos
 String formatearValorNumerico(dynamic valor) {
+  
   if (valor == null) return '0.00';
-
   if (valor is num) {
     return valor.toStringAsFixed(2);
   }
@@ -184,27 +184,116 @@ class PrintJobService {
         return false;
       }
 
-      // NUEVO: Verificar si se especifica una impresora específica
-      String? targetPrinterName =
-          request.printerName.isNotEmpty ? request.printerName : null;
+      // **NUEVO: Verificar si se especifica una impresora específica**
+      String? targetPrinterName;
+
+      // Intentar extraer el nombre de la impresora del JSON directamente
+      try {
+        dynamic parsedData = json.decode(jsonMessage);
+        Map<String, dynamic> data;
+        if (parsedData is List && parsedData.isNotEmpty) {
+          data = parsedData[0];
+        } else if (parsedData is Map<String, dynamic>) {
+          data = parsedData;
+        } else {
+          data = {};
+        }
+
+        // Buscar en múltiples campos posibles para el nombre de la impresora
+        targetPrinterName =
+            data['printer']?.toString() ??
+            data['impresora']?.toString() ??
+            data['printerName']?.toString() ??
+            data['printer_name']?.toString() ??
+            data['nombreImpresora']?.toString();
+
+        print('📋 Campos disponibles en JSON: ${data.keys.join(", ")}');
+        print('🔍 Impresora extraída del JSON: $targetPrinterName');
+      } catch (e) {
+        print('⚠️ Error al extraer nombre de impresora del JSON: $e');
+      }
+
+      // Si no se encontró en el JSON, usar el campo del request
+      if (targetPrinterName == null || targetPrinterName.isEmpty) {
+        targetPrinterName =
+            request.printerName.isNotEmpty ? request.printerName : null;
+        print('🔍 Impresora desde request.printerName: $targetPrinterName');
+      }
 
       // Si se especifica una impresora, verificar que esté conectada
-      if (targetPrinterName != null) {
-        if (!printerService.isPrinterConnected(targetPrinterName)) {
-          print(
-            '❌ Impresora "$targetPrinterName" no está conectada o no existe',
-          );
-          return false;
+      if (targetPrinterName != null && targetPrinterName.isNotEmpty) {
+        print('🔎 Buscando impresora: "$targetPrinterName"');
+        print(
+          '📊 Impresoras conectadas disponibles: ${printerService.connectedPrinterNames.join(", ")}',
+        );
+
+        // Verificar si la impresora está conectada (comparación case-insensitive)
+        bool isConnected = false;
+        String? exactPrinterName;
+
+        for (var printerName in printerService.connectedPrinterNames) {
+          if (printerName.toLowerCase() == targetPrinterName.toLowerCase()) {
+            isConnected = true;
+            exactPrinterName = printerName;
+            break;
+          }
         }
+
+        if (!isConnected) {
+          print(
+            '⚠️ Impresora "$targetPrinterName" no encontrada por nombre exacto, buscando parcialmente...',
+          );
+          // Intentar buscar por nombre parcial
+          final foundPrinter = printerService.findPrinterByName(
+            targetPrinterName,
+          );
+          if (foundPrinter == null) {
+            print(
+              '❌ Impresora "$targetPrinterName" no está conectada o no existe',
+            );
+            print(
+              '💡 Sugerencia: Verifica que el nombre en el mensaje JSON coincida exactamente con el nombre de la impresora configurada',
+            );
+            return false;
+          } else {
+            // Usar el nombre exacto encontrado
+            exactPrinterName = foundPrinter.deviceName;
+            print(
+              '✅ Impresora encontrada por coincidencia parcial: $exactPrinterName',
+            );
+          }
+        }
+
+        targetPrinterName = exactPrinterName;
         print('🎯 Imprimiendo en impresora específica: $targetPrinterName');
       } else {
-        // Si no se especifica impresora, usar la principal (retrocompatibilidad)
-        if (printerService.currentPrinter == null) {
-          print('❌ No hay impresora conectada para procesar la solicitud');
+        // Si no se especifica impresora, verificar si hay alguna conectada
+        print('⚠️ No se especificó impresora en el mensaje');
+        print(
+          '📊 Impresoras disponibles: ${printerService.connectedPrinterNames.join(", ")}',
+        );
+
+        // Si hay exactamente una impresora conectada, usarla
+        if (printerService.connectedPrinterNames.length == 1) {
+          targetPrinterName = printerService.connectedPrinterNames.first;
+          print(
+            '🔄 Auto-seleccionando única impresora conectada: $targetPrinterName',
+          );
+        } else if (printerService.connectedPrinterNames.length > 1) {
+          print(
+            '❌ Hay múltiples impresoras conectadas. Debes especificar cuál usar en el mensaje JSON',
+          );
+          print(
+            '� Agrega el campo "printer" o "impresora" con el nombre exacto de la impresora',
+          );
+          print(
+            '📋 Impresoras disponibles: ${printerService.connectedPrinterNames.join(", ")}',
+          );
+          return false;
+        } else {
+          print('❌ No hay impresoras conectadas');
           return false;
         }
-        targetPrinterName = printerService.currentPrinter?.deviceName;
-        print('🖨️ Usando impresora principal: $targetPrinterName');
       }
 
       // Validar que el tipo de solicitud sea permitido
@@ -255,7 +344,7 @@ class PrintJobService {
             );
             return await printVentaDirecto(request, targetPrinterName);
           } else {
-            return await printVenta(request, targetPrinterName);
+            return await printVentaDirecto(request, targetPrinterName);
           }
         case 'TEST':
           print('🧪 Imprimiendo prueba...');
@@ -388,6 +477,10 @@ class PrintJobService {
         styles: baseStyle,
       );
       bytes += generator.emptyLines(1);
+
+      // Añadir comandos de cajón y sonido si están habilitados
+      //bytes += await _getPostPrintCommands(generator);
+
       // Finalizar
       bytes += generator.cut(mode: PosCutMode.full);
 
@@ -497,6 +590,10 @@ class PrintJobService {
       bytes += generator.text('=== FIN DE PRUEBA ===');
 
       bytes += generator.feed(2);
+
+      // Añadir comandos de cajón y sonido si están habilitados
+      bytes += await _getPostPrintCommands(generator);
+      
       bytes += generator.cut();
 
       print('📋 Bytes generados para impresión: ${bytes.length} bytes');
@@ -537,6 +634,44 @@ class PrintJobService {
     } catch (e, stackTrace) {
       print('❌ Error imprimiendo prueba: $e');
       print('📋 Stack trace: $stackTrace');
+      return false;
+    }
+  }
+
+  // **NUEVO: Método para imprimir hoja de prueba en impresora específica**
+  Future<bool> printTestPageToSpecificPrinter(String printerName) async {
+    try {
+      print('🧪 Imprimiendo hoja de prueba en: $printerName');
+
+      final targetPrinter = printerService.findPrinterByName(printerName);
+      if (targetPrinter == null) {
+        print('❌ Impresora "$printerName" no encontrada para hoja de prueba');
+        return false;
+      }
+
+      // Guardar impresora actual
+      final originalSelectedPrinter = printerService.selectedPrinter;
+
+      // Seleccionar la impresora para la prueba temporalmente
+      bool selected = printerService.selectPrinterByName(printerName);
+
+      if (!selected) {
+        print('❌ No se pudo seleccionar impresora para prueba: $printerName');
+        return false;
+      }
+
+      // Procesar la impresión de prueba
+      final result = await printTest(printerName);
+
+      // Restaurar impresora original
+      if (originalSelectedPrinter != null) {
+        printerService.selectedPrinter = originalSelectedPrinter;
+        print('🔄 Impresora restaurada después de prueba');
+      }
+
+      return result;
+    } catch (e) {
+      print('❌ Error imprimiendo hoja de prueba: $e');
       return false;
     }
   }
@@ -664,6 +799,10 @@ class PrintJobService {
       }
 
       bytes += generator.emptyLines(2);
+
+      // Añadir comandos de cajón y sonido si están habilitados
+      //bytes += await _getPostPrintCommands(generator);
+
       bytes += generator.cut(mode: PosCutMode.full);
 
       // Imprimir el número de copias solicitado
@@ -825,77 +964,39 @@ class PrintJobService {
       bytes += generateLine(generator: generator, paperSize: paperSize);
       bytes += generator.emptyLines(1);
 
-      bytes += generator.row([
-        PosColumn(
-          text: 'SUBTOTAL 0%:',
-          width: 9,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-        PosColumn(
-          text: prefacturaData.sinIva.toStringAsFixed(2),
-          width: 3,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-      ]);
-
-      bytes += generator.row([
-        PosColumn(
-          text: 'SUBTOTAL 15%:',
-          width: 9,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-        PosColumn(
-          text: prefacturaData.conIva.toStringAsFixed(2),
-          width: 3,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-      ]);
-
-      bytes += generator.row([
-        PosColumn(
-          text: 'SUBTOTAL SIN IMPUESTOS:',
-          width: 9,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-        PosColumn(
-          text: (prefacturaData.sinIva + prefacturaData.conIva).toStringAsFixed(
-            2,
-          ),
-          width: 3,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-      ]);
-
-      bytes += generator.row([
-        PosColumn(
-          text: 'IVA 15:',
-          width: 9,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-        PosColumn(
-          text: prefacturaData.iva.toStringAsFixed(2),
-          width: 3,
-          styles: baseStyle.copyWith(align: PosAlign.left),
-        ),
-      ]);
-
-      bytes += generator.row([
-        PosColumn(
-          text: 'TOTAL:',
-          width: 9,
-          styles: baseStyle.copyWith(align: PosAlign.left, bold: true),
-        ),
-        PosColumn(
-          text: prefacturaData.total.toStringAsFixed(2),
-          width: 3,
-          styles: baseStyle.copyWith(align: PosAlign.left, bold: true),
-        ),
-      ]);
+      for (var total in prefacturaData.totales!) {
+        // Los totales vienen como Map<String, dynamic>, no como objetos
+        if (total is Map<String, dynamic>) {
+          final descripcion = total['descripcion']?.toString() ?? '';
+          final valorRaw = total['valor'];
+          final valor =
+              valorRaw is num
+                  ? valorRaw.toDouble()
+                  : double.tryParse(valorRaw?.toString() ?? '0') ?? 0.0;
+          if (valor == 0.0) continue; // Omitir totales con valor cero
+          bytes += generator.row([
+            PosColumn(
+              text: descripcion,
+              width: 9,
+              styles: baseStyle.copyWith(align: PosAlign.left),
+            ),
+            PosColumn(
+              text: valor.toStringAsFixed(2),
+              width: 3,
+              styles: baseStyle.copyWith(align: PosAlign.left),
+            ),
+          ]);
+        }
+      }
 
       bytes += generator.emptyLines(2);
 
       bytes += generator.text(
         'Mesero: ${prefacturaData.empleado ?? ""}',
+        styles: baseStyle,
+      );
+      bytes += generator.text(
+        'Cliente: ${prefacturaData.cliente ?? ""}',
         styles: baseStyle,
       );
 
@@ -927,6 +1028,10 @@ class PrintJobService {
         styles: baseStyle,
       );
       bytes += generator.emptyLines(3);
+
+      // Añadir comandos de cajón y sonido si están habilitados
+      //bytes += await _getPostPrintCommands(generator);
+
       bytes += generator.cut(mode: PosCutMode.full);
 
       // Imprimir el número de copias solicitado
@@ -1197,6 +1302,22 @@ class PrintJobService {
         ]);
       }
 
+      // Agregar servicio 10% si es mayor que 0
+      if (esValorMayorQueCero(ventaData.recargo)) {
+        bytes += generator.row([
+          PosColumn(
+            text: 'SERVICIO 10%:',
+            width: 9,
+            styles: baseStyle.copyWith(align: PosAlign.left),
+          ),
+          PosColumn(
+            text: formatearValorNumerico(ventaData.recargo),
+            width: 3,
+            styles: baseStyle.copyWith(align: PosAlign.left),
+          ),
+        ]);
+      }
+
       // TOTAL en negrita
       bytes += generator.row([
         PosColumn(
@@ -1253,6 +1374,10 @@ class PrintJobService {
         styles: baseStyle,
       );
       bytes += generator.emptyLines(1);
+
+      // Añadir comandos de cajón y sonido si están habilitados
+      bytes += await _getPostPrintCommands(generator);
+
       bytes += generator.cut(mode: PosCutMode.full);
 
       // Imprimir el número de copias solicitado
@@ -1663,6 +1788,24 @@ class PrintJobService {
         ]);
       }
 
+      // SERVICIO 10% (antes del IVA 15%)
+      if (esValorMayorQueCero(dataMap['vent_recargo'] ?? dataMap['recargo'])) {
+        bytes += generator.row([
+          PosColumn(
+            text: 'SERVICIO 10%:',
+            width: 9,
+            styles: baseStyle.copyWith(align: PosAlign.left),
+          ),
+          PosColumn(
+            text: formatearValorNumerico(
+              dataMap['vent_recargo'] ?? dataMap['recargo'],
+            ),
+            width: 3,
+            styles: baseStyle.copyWith(align: PosAlign.left),
+          ),
+        ]);
+      }
+
       // IVA 15%
       if (esValorMayorQueCero(dataMap['iva15'])) {
         bytes += generator.row([
@@ -1747,6 +1890,10 @@ class PrintJobService {
         styles: baseStyle,
       );
       bytes += generator.emptyLines(1);
+
+      // Añadir comandos de cajón y sonido si están habilitados
+      bytes += await _getPostPrintCommands(generator);
+
       bytes += generator.cut(mode: PosCutMode.full);
 
       // Imprimir el número de copias solicitado
@@ -1780,6 +1927,28 @@ class PrintJobService {
       print('📋 Stack trace: $stackTrace');
       return false;
     }
+  }
+
+  /// Genera los bytes para los comandos de post-impresión (cajón, sonido)
+  Future<List<int>> _getPostPrintCommands(Generator generator) async {
+    List<int> commands = [];
+    try {
+      final bool openDrawer = await ConfigService.loadOpenDrawer();
+      final bool doBeep = await ConfigService.loadBeep();
+
+      if (openDrawer) {
+        commands += generator.drawer();
+        print('✅ Comando para abrir cajón añadido.');
+      }
+
+      if (doBeep) {
+        commands += generator.beep(n: 2, duration: PosBeepDuration.beep200ms);
+        print('✅ Comando de sonido (beep) añadido.');
+      }
+    } catch (e) {
+      print('❌ Error al obtener comandos de post-impresión: $e');
+    }
+    return commands;
   }
 
   List<int> generateLine({

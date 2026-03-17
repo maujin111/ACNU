@@ -9,6 +9,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
   // Attach to console when present (e.g., 'flutter run') or create a
   // new console when running with a debugger.
+
+  HANDLE hMutex = CreateMutex(NULL, TRUE, L"AnfibiusConnect_Unique_Mutex_Lock");
+  if (GetLastError() == ERROR_ALREADY_EXISTS) {
+    MessageBox(NULL, L"Anfibius connect is already running.", L"Anfibius Connect", MB_OK | MB_ICONERROR | MB_TOPMOST);
+    CloseHandle(hMutex);
+    return EXIT_SUCCESS; 
+  }
+
   if (!::AttachConsole(ATTACH_PARENT_PROCESS) && ::IsDebuggerPresent()) {
     CreateAndAttachConsole();
   }
@@ -27,10 +35,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"Anfibius web utility", origin, size)) {
+  if (!window.Create(L"Anfibius Connect", origin, size)) {
     return EXIT_FAILURE;
   }
-  window.SetQuitOnClose(true);
+  window.SetQuitOnClose(true); 
 
   ::MSG msg;
   while (::GetMessage(&msg, nullptr, 0, 0)) {

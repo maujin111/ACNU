@@ -1,9 +1,5 @@
-import 'package:anfibius_uwu/screens/SessionSettingsForm.dart';
-import 'package:anfibius_uwu/screens/nomina.dart';
-
-import 'lector_huella.dart';
-import 'package:anfibius_uwu/printers.dart';
-import 'package:anfibius_uwu/settings_screen.dart';
+import 'package:anfibius_connect/printers.dart';
+import 'package:anfibius_connect/settings_screen.dart';
 import 'package:flutter/material.dart';
 
 class Configuraciones extends StatefulWidget {
@@ -28,7 +24,7 @@ class _ConfiguracionesState extends State<Configuraciones> {
         child: SizedBox(
           width: double.infinity,
           child: DefaultTabController(
-            length: 5,
+            length: 2,
             child: Column(
               children: [
                 Expanded(
@@ -37,9 +33,7 @@ class _ConfiguracionesState extends State<Configuraciones> {
                       // First tab content
                       GeneralSettingsScreen(),
                       PrinterConfig(),
-                      LectorHuella(),
-                      Nomina(),
-                      SessionSettingsForm(),
+                      // Second tab content
                     ],
                   ),
                 ),
@@ -47,9 +41,6 @@ class _ConfiguracionesState extends State<Configuraciones> {
                   tabs: const [
                     Tab(icon: Icon(Icons.settings), text: 'General'),
                     Tab(icon: Icon(Icons.print), text: 'Impresoras'),
-                    Tab(icon: Icon(Icons.fingerprint), text: 'Lectores'),
-                    Tab(icon: Icon(Icons.paid), text: 'Nomina'),
-                    Tab(icon: Icon(Icons.person), text: 'Sesión'),
                   ],
                 ),
               ],
