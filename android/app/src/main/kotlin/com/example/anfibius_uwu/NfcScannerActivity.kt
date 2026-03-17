@@ -21,7 +21,14 @@ class NfcScannerActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d(TAG, "Iniciando NfcScannerActivity con FullScreenIntent")
+        Log.d(TAG, "Iniciando NfcScannerActivity...")
+        
+        // COMPROBAR SI HAY UNA PETICIÓN ACTIVA
+        if (!NfcForegroundService.isScanWindowActive()) {
+            Log.w(TAG, "Actividad despertada sin petición activa. Cerrando.")
+            finish()
+            return
+        }
         
         // Banderas críticas para Honor/Huawei antes de setContentView
         requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
