@@ -84,7 +84,7 @@ Future<void> _mainInit(List<String> args) async {
 
   // 🆕 Inicializar servicios
   try {
-    await logger.init();
+    //sawait logger.init();
     logger.success('Logger Service inicializado');
   } catch (e) {
     print('❌ Error inicializando Logger Service: $e');
@@ -339,15 +339,15 @@ class _MyHomePageState extends State<MyHomePage>
   // Función para solicitar permisos al inicio
   Future<void> _pedirPermisosIniciales() async {
     // Lista de permisos críticos para el POS y el trabajo en segundo plano
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.notification,      // Para el Foreground Task / Notificación persistente
-      Permission.bluetoothScan,     // Para buscar impresoras
-      Permission.bluetoothConnect,  // Para enviar a imprimir
-      Permission.location,          // Requisito de Android para usar Bluetooth
-    ].request();
+    Map<Permission, PermissionStatus> statuses =
+        await [
+          Permission
+              .notification, // Para el Foreground Task / Notificación persistente
+          Permission.bluetoothScan, // Para buscar impresoras
+          Permission.bluetoothConnect, // Para enviar a imprimir
+          Permission.location, // Requisito de Android para usar Bluetooth
+        ].request();
   }
-
-
 
   void _onReceiveTaskData(Object data) {
     // 🛡️ PROTECCIÓN: Envolver en try-catch
