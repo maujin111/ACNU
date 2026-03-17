@@ -61,6 +61,13 @@ class ConfigService {
   static const String _usingCustomPaperSizeKey = 'using_custom_paper_size';
   static const String _connectedPrintersKey = 'connected_printers';
 
+  // Claves para lector de huellas
+  static const String _fingerprintDeviceKey = 'fingerprint_device';
+  static const String _autoListeningEnabledKey = 'auto_listening_enabled';
+  static const String _ttsEnabledKey = 'tts_enabled';
+
+  
+
   // Guardar la impresora seleccionada
   static Future<void> saveSelectedPrinter(BluetoothPrinter? printer) async {
     final prefs = await SharedPreferences.getInstance();
@@ -318,54 +325,93 @@ class ConfigService {
     await prefs.remove(key);
   }
 
-  // CONSTANTES PARA COMANDOS POS ADICIONALES
-  static const String _openDrawerKey = 'open_drawer_after_print';
-  static const String _beepKey = 'beep_after_print';
+  static const String _rucKey = 'ruc';
+  static const String _usernameKey = 'username';
 
-  // Guardar configuración de abrir cajón
-  static Future<void> saveOpenDrawer(bool open) async {
+  // Guardar RUC
+  static Future<void> saveRuc(String ruc) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_openDrawerKey, open);
+    await prefs.setString(_rucKey, ruc);
   }
 
-  // Cargar configuración de abrir cajón
-  static Future<bool> loadOpenDrawer() async {
+  // Cargar RUC
+  static Future<String?> loadRuc() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_openDrawerKey) ?? false;
+    return prefs.getString(_rucKey);
   }
 
-  // Guardar configuración de emitir sonido
-  static Future<void> saveBeep(bool beep) async {
+  // Guardar Username
+  static Future<void> saveUsername(String username) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_beepKey, beep);
+    await prefs.setString(_usernameKey, username);
   }
 
-  // Cargar configuración de emitir sonido
-  static Future<bool> loadBeep() async {
+  // Cargar Username
+  static Future<String?> loadUsername() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_beepKey) ?? false;
+    return prefs.getString(_usernameKey);
   }
 
-  // MÉTODOS PARA LECTOR NFC
-  static const String _nfcReaderKey = 'saved_nfc_reader';
+  // --- MÉTODOS PARA LECTOR DE HUELLAS ---
 
-  // Guardar el lector NFC detectado
-  static Future<void> saveNfcReader(String readerName) async {
+  // Guardar dispositivo de lector de huellas
+  static Future<void> saveFingerprintDevice(
+    String type,
+    String vendorId,
+    String productId,
+    String? name,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_nfcReaderKey, readerName);
+    final deviceData = {
+      'type': type,
+      'vendorId': vendorId,
+      'productId': productId,
+      'name': name,
+    };
+    await prefs.setString(_fingerprintDeviceKey, jsonEncode(deviceData));
   }
 
-  // Cargar el lector NFC guardado
-  static Future<String?> loadNfcReader() async {
+  // Cargar dispositivo de lector de huellas
+  static Future<Map<String, dynamic>?> loadFingerprintDevice() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_nfcReaderKey);
+    final deviceData = prefs.getString(_fingerprintDeviceKey);
+    if (deviceData == null) return null;
+
+    try {
+      return jsonDecode(deviceData);
+    } catch (e) {
+      print('Error al cargar dispositivo de huella: $e');
+      return null;
+    }
   }
 
-  // Eliminar el lector NFC (Olvidar dispositivo)
-  static Future<void> removeNfcReader() async {
+  // Remover dispositivo de lector de huellas
+  static Future<void> removeFingerprintDevice() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_nfcReaderKey);
+    await prefs.remove(_fingerprintDeviceKey);
   }
 
+  // Guardar configuración de escucha automática
+  static Future<void> saveAutoListeningEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoListeningEnabledKey, enabled);
+  }
 
+  // Cargar configuración de escucha automática
+  static Future<bool> loadAutoListeningEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_autoListeningEnabledKey) ?? false;
+  }
+
+  // Guardar configuración de TTS (Text-to-Speech)
+  static Future<void> saveTTSEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_ttsEnabledKey, enabled);
+  }
+
+  // Cargar configuración de TTS (Text-to-Speech)
+  static Future<bool> loadTTSEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_ttsEnabledKey) ?? true; // Por defecto habilitado
+  }
 }
