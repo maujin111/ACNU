@@ -1,10 +1,10 @@
-import 'package:anfibius_connect/nfc_reader_screen.dart';
+import 'package:anfibius_uwu/nfc_reader_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_nfc_kit/flutter_nfc_kit.dart';
 import 'logger_service.dart';
-import 'package:anfibius_connect/services/websocket_service.dart';
-import 'package:anfibius_connect/services/notifications_service.dart';
+import 'package:anfibius_uwu/services/websocket_service.dart';
+import 'package:anfibius_uwu/services/notifications_service.dart';
 
 class NfcService extends ChangeNotifier {
   static const MethodChannel _channel = MethodChannel('nfc_pos');
@@ -73,7 +73,7 @@ class NfcService extends ChangeNotifier {
       logger.info('Tipo de tecnología: ${tag.type}');
 
       final datosJson = {"type": "RES_NFC", "uid": tag.id};
-      bool wsSent = wsService.sendMessage(datosJson);
+      bool wsSent = wsService.sendJson(datosJson);
       
       if (wsSent) {
         _leido = true;

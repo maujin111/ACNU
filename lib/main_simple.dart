@@ -1,14 +1,14 @@
 import 'dart:io' show Platform;
-import 'package:anfibius_connect/dispositivos.dart';
-import 'package:anfibius_connect/services/print_job_service.dart';
-import 'package:anfibius_connect/services/printer_service.dart';
-import 'package:anfibius_connect/services/startup_service.dart';
-import 'package:anfibius_connect/services/websocket_service.dart';
-import 'package:anfibius_connect/settings_screen.dart';
+import 'package:anfibius_uwu/dispositivos.dart';
+import 'package:anfibius_uwu/services/print_job_service.dart';
+import 'package:anfibius_uwu/services/printer_service.dart';
+import 'package:anfibius_uwu/services/startup_service.dart';
+import 'package:anfibius_uwu/services/websocket_service.dart';
+import 'package:anfibius_uwu/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:anfibius_connect/services/notifications_service.dart';
+import 'package:anfibius_uwu/services/notifications_service.dart';
 
 // Importaciones condicionales para escritorio (sin window_manager por problemas)
 import 'package:tray_manager/tray_manager.dart'

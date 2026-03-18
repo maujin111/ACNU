@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart' hide Card; 
 import 'package:dart_pcsc/dart_pcsc.dart';
-import 'package:anfibius_connect/services/websocket_service.dart';
-import 'package:anfibius_connect/services/config_service.dart';
+import 'package:anfibius_uwu/services/websocket_service.dart';
+import 'package:anfibius_uwu/services/config_service.dart';
 
 class NfcPcscService extends ChangeNotifier {
   bool _isReading = false;
@@ -146,7 +146,7 @@ class NfcPcscService extends ChangeNotifier {
       if (resp.length >= 2 && resp[resp.length - 2] == 0x90 && resp[resp.length - 1] == 0x00) {
         Uint8List uidBytes = resp.sublist(0, resp.length - 2);
         String uidHex = uidBytes.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase()).join();
-        webSocketService.sendMessage({"type": "RES_NFC", "uid": uidHex});
+        webSocketService.sendJson({"type": "RES_NFC", "uid": uidHex});
       }
     } catch (e) {
       print('❌ Error NFC: $e');

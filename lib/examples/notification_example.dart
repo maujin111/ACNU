@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:anfibius_connect/services/notifications_service.dart';
+import 'package:anfibius_uwu/services/notifications_service.dart';
 
 class NotificationExample extends StatefulWidget {
   const NotificationExample({super.key});

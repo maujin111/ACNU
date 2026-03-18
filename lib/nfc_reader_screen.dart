@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:anfibius_connect/services/nfc_service.dart';
+import 'package:anfibius_uwu/services/nfc_service.dart';
 import 'package:flutter/services.dart';
 
 class NfcScreen extends StatelessWidget {

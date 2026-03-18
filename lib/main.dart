@@ -29,9 +29,16 @@ import 'package:desktop_multi_window/desktop_multi_window.dart'
     if (dart.library.html) 'package:anfibius_uwu/platform_stubs.dart';
 
 
+
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+final FlutterLocalNotificationsPlugin notifications =
+    FlutterLocalNotificationsPlugin();
 
 class HttpOverridesForDev extends HttpOverrides {
   @override

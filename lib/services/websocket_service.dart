@@ -596,4 +596,17 @@ class WebSocketService extends ChangeNotifier {
       print('Error al limpiar el historial: $e');
     }
   }
+  
+
+  //Metodo para enviar json
+  bool sendJson(Map<String, dynamic> message) {
+    try {
+      final String jsonMessage = json.encode(message);
+      _channel!.sink.add(jsonMessage);
+      print('📤 Mensaje enviado: $jsonMessage');
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
 }

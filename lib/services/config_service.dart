@@ -66,8 +66,6 @@ class ConfigService {
   static const String _autoListeningEnabledKey = 'auto_listening_enabled';
   static const String _ttsEnabledKey = 'tts_enabled';
 
-  
-
   // Guardar la impresora seleccionada
   static Future<void> saveSelectedPrinter(BluetoothPrinter? printer) async {
     final prefs = await SharedPreferences.getInstance();
@@ -413,5 +411,54 @@ class ConfigService {
   static Future<bool> loadTTSEnabled() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_ttsEnabledKey) ?? true; // Por defecto habilitado
+  }
+
+  // CONSTANTES PARA COMANDOS POS ADICIONALES
+  static const String _openDrawerKey = 'open_drawer_after_print';
+  static const String _beepKey = 'beep_after_print';
+
+  // Guardar configuración de abrir cajón
+  static Future<void> saveOpenDrawer(bool open) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_openDrawerKey, open);
+  }
+
+  // Cargar configuración de abrir cajón
+  static Future<bool> loadOpenDrawer() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_openDrawerKey) ?? false;
+  }
+
+  // Guardar configuración de emitir sonido
+  static Future<void> saveBeep(bool beep) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_beepKey, beep);
+  }
+
+  // Cargar configuración de emitir sonido
+  static Future<bool> loadBeep() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_beepKey) ?? false;
+  }
+
+  // MÉTODOS PARA LECTOR NFC
+  static const String _nfcReaderKey = 'saved_nfc_reader';
+
+  // Guardar el lector NFC detectado
+  static Future<void> saveNfcReader(String readerName) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_nfcReaderKey, readerName);
+  }
+
+  // Cargar el lector NFC guardado
+  static Future<String?> loadNfcReader() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_nfcReaderKey);
+  }
+
+  // Eliminar el lector NFC (Olvidar dispositivo)
+  static Future<void> removeNfcReader() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_nfcReaderKey);
   }
 }
