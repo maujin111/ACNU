@@ -73,7 +73,7 @@ class NfcService extends ChangeNotifier {
       logger.info('Tipo de tecnología: ${tag.type}');
 
       final datosJson = {"type": "RES_NFC", "uid": tag.id};
-      bool wsSent = wsService.sendJson(datosJson);
+      bool wsSent = wsService.sendMessage(datosJson);
       
       if (wsSent) {
         _leido = true;
