@@ -18,19 +18,14 @@ class FingerprintDevice {
   final String name;
   final String type;
 
-  FingerprintDevice({
-    required this.id,
-    required this.name,
-    required this.type,
-  });
+  FingerprintDevice({required this.id, required this.name, required this.type});
 }
 
 class FingerprintReaderService extends ChangeNotifier {
   final AuthService _authService;
   final TTSService _ttsService = TTSService();
 
-  static const String _baseUrl =
-      'https://web.anfibius.net:8181/anfibiusBack/api';
+  static const String _baseUrl = 'http://10.0.1.13:8080/anfibiusBack/api';
 
   /// ==============================
   /// DEVICE STATE
@@ -72,19 +67,40 @@ class FingerprintReaderService extends ChangeNotifier {
     _init();
   }
 
-  Future<void> _init() async {
-  await _ttsService.initialize();
+ Future<void> _init() async {
+    await _ttsService.initialize();
 
-  _isAutoListeningEnabled =
-      await ConfigService.loadAutoListeningEnabled();
+    _isAutoListeningEnabled = await ConfigService.loadAutoListeningEnabled();
+    _ttsEnabled = await ConfigService.loadTTSEnabled();
+    _ttsService.setEnabled(_ttsEnabled);
 
-  _ttsEnabled =
-      await ConfigService.loadTTSEnabled();
+    await scanDevices();
 
-  _ttsService.setEnabled(_ttsEnabled);
+    final savedDeviceData = await ConfigService.loadFingerprintDevice();
+    
+    if (savedDeviceData != null) {
+      _selectedDevice = FingerprintDevice(
+        id: savedDeviceData['vendorId'] ?? '',
+        name: savedDeviceData['name'] ?? 'Lector Biométrico',
+        type: savedDeviceData['type'] ?? '',
+      );
+      
+      if (_selectedDevice!.type.toLowerCase().contains('zk')) {
+        _sdkType = 'zkteco';
+        _zktecoSDK ??= ZKTecoSDK();
+      } else {
+        _sdkType = 'hikvision';
+        _hikvisionSDK ??= HikvisionSDK();
+      }
 
-  await scanDevices();
-}
+      final connected = await connect();
+      
+      if (connected && _isAutoListeningEnabled) {
+        startListening();
+      } else if (!connected) {
+      }
+    }
+  }
 
   /// ==============================
   /// SCAN DEVICES (UNIFICADO)
@@ -93,7 +109,6 @@ class FingerprintReaderService extends ChangeNotifier {
   Future<void> scanDevices() async {
     print("Scanning for fingerprint devices...");
     _availableDevices.clear();
-    
 
     // ---- ZKTeco ----
     try {
@@ -117,7 +132,7 @@ class FingerprintReaderService extends ChangeNotifier {
             ),
           );
         }
-        
+
         // No terminamos aquí si queremos mantener el conteo o si vamos a abrirlo después
         // Pero para el escaneo puro solemos terminar
         _zktecoSDK!.terminate();
@@ -164,6 +179,12 @@ class FingerprintReaderService extends ChangeNotifier {
       _sdkType = 'hikvision';
       _hikvisionSDK ??= HikvisionSDK();
     }
+    await ConfigService.saveFingerprintDevice(
+      device.type,
+      device.id,
+      '',
+      device.name,
+    );
 
     await connect();
     notifyListeners();
@@ -182,8 +203,7 @@ class FingerprintReaderService extends ChangeNotifier {
         // Aceptamos 0 o 1 (inicializado)
         if (init < 0) return false;
 
-        final index =
-            int.parse(_selectedDevice!.id.split('_').last);
+        final index = int.parse(_selectedDevice!.id.split('_').last);
 
         _zkDeviceHandle = _zktecoSDK!.openDevice(index);
         if (_zkDeviceHandle == null) return false;
@@ -197,6 +217,7 @@ class FingerprintReaderService extends ChangeNotifier {
       if (_sdkType == 'hikvision') {
         _isConnected = HikvisionSDK.openDevice();
       }
+
 
       onConnectionChanged?.call(_isConnected);
       notifyListeners();
@@ -214,7 +235,7 @@ class FingerprintReaderService extends ChangeNotifier {
   Future<void> disconnect() async {
     // Primero detenemos cualquier escaneo activo
     _isScanning = false;
-    
+
     // Esperamos un momento para que el hilo de escucha se detenga
     await Future.delayed(const Duration(milliseconds: 200));
 
@@ -230,7 +251,7 @@ class FingerprintReaderService extends ChangeNotifier {
         HikvisionSDK.closeDevice();
       }
     } catch (e) {
-       print("Error durante la desconexión: $e");
+      print("Error durante la desconexión: $e");
     }
 
     _isConnected = false;
@@ -245,12 +266,11 @@ class FingerprintReaderService extends ChangeNotifier {
 
   void startListening() {
     if (!_isConnected) return;
-    
+
     // Si ya estamos escaneando, no hacemos nada para evitar duplicar el hilo
     if (_isScanning) return;
 
     _isScanning = true;
-
     if (_sdkType == 'hikvision') {
       HikvisionSDK.startCapture();
     }
@@ -261,7 +281,7 @@ class FingerprintReaderService extends ChangeNotifier {
         _startZKListening();
       }
     }
-    
+
     notifyListeners();
   }
 
@@ -271,7 +291,7 @@ class FingerprintReaderService extends ChangeNotifier {
     if (_sdkType == 'hikvision') {
       HikvisionSDK.stopCapture();
     }
-    
+
     notifyListeners();
   }
 
@@ -282,18 +302,18 @@ class FingerprintReaderService extends ChangeNotifier {
   Future<void> _startZKListening() async {
     if (_isLooping) return;
     _isLooping = true;
-    
+
     print("Iniciando hilo de escucha ZK...");
-    
+
     try {
       // Obtenemos dimensiones una sola vez para evitar error -2 (Busy/Invalid Handle)
       final w = _zktecoSDK!.getImageWidth(_zkDeviceHandle);
       final h = _zktecoSDK!.getImageHeight(_zkDeviceHandle);
-      
+
       print("Iniciando escucha ZK con dimensiones: ${w}x${h}");
 
       int noFingerCount = 0;
-      
+
       while (_isScanning && _isConnected) {
         final result = _zktecoSDK!.captureFingerprint(
           _zkDeviceHandle,
@@ -304,7 +324,7 @@ class FingerprintReaderService extends ChangeNotifier {
         if (result != null) {
           noFingerCount = 0; // Reset contador
           _lastCaptureTime = DateTime.now();
-          _lastFingerprintImage = result.image; 
+          _lastFingerprintImage = result.image;
           _lastImageWidth = result.width;
           _lastImageHeight = result.height;
           notifyListeners();
@@ -316,14 +336,17 @@ class FingerprintReaderService extends ChangeNotifier {
             // AUTO-TIMBRADO: Si no estamos registrando, marcamos asistencia
             if (!_isRegistering) {
               print("Intentando timbrado automático...");
-              markAttendance(result.template).then((response) {
-                if (response != null) {
-                  print("Timbrado exitoso: ${response['message']}");
-                  onAttendanceMarked?.call(response);
-                }
-              }).catchError((e) {
-                print("Error en timbrado automático: $e");
-              });
+              markAttendance(result.template)
+                  .then((response) {
+                    print(response);
+                    if (response != null) {
+                      print("Timbrado exitoso: ${response['message']}");
+                      onAttendanceMarked?.call(response);
+                    }
+                  })
+                  .catchError((e) {
+                    print("Error en timbrado automático: $e");
+                  });
             }
           }
         } else {
@@ -351,14 +374,12 @@ class FingerprintReaderService extends ChangeNotifier {
   /// MARK ATTENDANCE (OPTIMIZADO)
   /// ==============================
 
-  Future<Map<String, dynamic>?> markAttendance(
-      Uint8List template) async {
+  Future<Map<String, dynamic>?> markAttendance(Uint8List template) async {
     final token = await _authService.getToken();
     if (token == null) return null;
 
-    final uri = Uri.parse(
-        '$_baseUrl/empleados/marcarbiometrico');
-
+    final uri = Uri.parse('$_baseUrl/empleados/marcarbiometrico');
+    print(template);
     final response = await http.post(
       uri,
       headers: {
@@ -367,7 +388,7 @@ class FingerprintReaderService extends ChangeNotifier {
       },
       body: template,
     );
-
+    print(jsonDecode(response.body));
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       await _ttsService.sayWelcome(
@@ -381,43 +402,45 @@ class FingerprintReaderService extends ChangeNotifier {
   }
 
   Future<bool> connectToDevice() async {
-  if (_selectedDevice == null) return false;
-  await connect();
-  return _isConnected;
-}
-
-Future<void> setAutoListeningEnabled(bool value) async {
-  _isAutoListeningEnabled = value;
-
-  await ConfigService.saveAutoListeningEnabled(value);
-
-  if (_isConnected && value) {
-    startListening();
+    if (_selectedDevice == null) return false;
+    await connect();
+    return _isConnected;
   }
 
-  notifyListeners();
-}
+  Future<void> setAutoListeningEnabled(bool value) async {
+    _isAutoListeningEnabled = value;
 
-Future<void> setTTSEnabled(bool value) async {
-  _ttsEnabled = value;
+    await ConfigService.saveAutoListeningEnabled(value);
 
-  await ConfigService.saveTTSEnabled(value);
+    if (_isConnected && value) {
+      startListening();
+    }
 
-  _ttsService.setEnabled(value);
+    notifyListeners();
+  }
 
-  notifyListeners();
-}
+  Future<void> setTTSEnabled(bool value) async {
+    _ttsEnabled = value;
+
+    await ConfigService.saveTTSEnabled(value);
+
+    _ttsService.setEnabled(value);
+
+    notifyListeners();
+  }
 
   Future<bool> registerFingerprint(int employeeId, Uint8List template) async {
     final token = await _authService.getToken();
     if (token == null) return false;
 
     final uri = Uri.parse(
-        '$_baseUrl/empleados/registarbiometrico?id=$employeeId');
+      '$_baseUrl/empleados/registrarbiometrico?id=$employeeId',
+    );
 
     print("Enviando registro de huella a: $uri");
 
     try {
+      print(template);
       final response = await http.post(
         uri,
         headers: {
@@ -426,7 +449,7 @@ Future<void> setTTSEnabled(bool value) async {
         },
         body: template,
       );
-
+      print(jsonDecode(response.body));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return data['status'] == 'ok';
@@ -450,26 +473,26 @@ Future<void> setTTSEnabled(bool value) async {
     try {
       // Lista para guardar los 3 templates
       List<Uint8List> templates = [];
-      
+
       // Obtenemos dimensiones una vez
       final w = _zktecoSDK!.getImageWidth(_zkDeviceHandle);
       final h = _zktecoSDK!.getImageHeight(_zkDeviceHandle);
 
       while (templates.length < 3 && _isRegistering) {
         // Notificar que esperamos dedo
-        onRegistrationStatusChange?.call(false, null); 
+        onRegistrationStatusChange?.call(false, null);
 
         // Intentar capturar
         final result = _zktecoSDK!.captureFingerprint(
-          _zkDeviceHandle, 
-          prefWidth: w, 
-          prefHeight: h
+          _zkDeviceHandle,
+          prefWidth: w,
+          prefHeight: h,
         );
 
         if (result != null && result.template.isNotEmpty) {
           // Dedo detectado y template extraído
           onFingerDetected?.call();
-          
+
           // Guardar imagen para feedback visual
           _lastFingerprintImage = result.image;
           _lastImageWidth = result.width;
@@ -478,16 +501,16 @@ Future<void> setTTSEnabled(bool value) async {
           notifyListeners();
 
           templates.add(result.template);
-          
+
           // Notificar a la UI que esta captura fue exitosa
           onRegistrationStatusChange?.call(true, null);
-          
+
           // Esperar un poco para que el usuario levante el dedo
           if (templates.length < 3) {
             await Future.delayed(const Duration(milliseconds: 1500));
           }
         }
-        
+
         await Future.delayed(const Duration(milliseconds: 200));
       }
 
@@ -497,9 +520,12 @@ Future<void> setTTSEnabled(bool value) async {
         final mergedLenPtr = calloc<Uint32>()..value = 2048;
 
         // Necesitamos punteros para los 3 templates originales
-        final t1 = calloc<Uint8>(templates[0].length)..asTypedList(templates[0].length).setAll(0, templates[0]);
-        final t2 = calloc<Uint8>(templates[1].length)..asTypedList(templates[1].length).setAll(0, templates[1]);
-        final t3 = calloc<Uint8>(templates[2].length)..asTypedList(templates[2].length).setAll(0, templates[2]);
+        final t1 = calloc<Uint8>(templates[0].length)
+          ..asTypedList(templates[0].length).setAll(0, templates[0]);
+        final t2 = calloc<Uint8>(templates[1].length)
+          ..asTypedList(templates[1].length).setAll(0, templates[1]);
+        final t3 = calloc<Uint8>(templates[2].length)
+          ..asTypedList(templates[2].length).setAll(0, templates[2]);
 
         try {
           final mergeResult = _zktecoSDK!.dbMerge(
@@ -508,22 +534,29 @@ Future<void> setTTSEnabled(bool value) async {
             t2,
             t3,
             mergedTemplatePtr,
-            mergedLenPtr
+            mergedLenPtr,
           );
 
           if (mergeResult == 0) {
-            final finalTemplate = Uint8List.fromList(mergedTemplatePtr.asTypedList(mergedLenPtr.value));
-            
+            final finalTemplate = Uint8List.fromList(
+              mergedTemplatePtr.asTypedList(mergedLenPtr.value),
+            );
+
             // REGISTRO REAL EN EL SERVIDOR
-            final success = await registerFingerprint(employeeId, finalTemplate);
-            
+            final success = await registerFingerprint(
+              employeeId,
+              finalTemplate,
+            );
+
             if (success) {
               onRegistrationSuccess?.call();
             } else {
               throw Exception("El servidor rechazó la huella");
             }
           } else {
-            throw Exception("Error al combinar huellas (Merge error: $mergeResult)");
+            throw Exception(
+              "Error al combinar huellas (Merge error: $mergeResult)",
+            );
           }
         } finally {
           calloc.free(t1);
@@ -540,16 +573,26 @@ Future<void> setTTSEnabled(bool value) async {
     }
   }
 
-void stopFingerprintRegistration() {
-  _isRegistering = false;
-}
+  void stopFingerprintRegistration() {
+    _isRegistering = false;
+  }
+
+  Future<void> forgetDevice() async {
+    await disconnect();
+    await ConfigService.removeFingerprintDevice();
+
+    _selectedDevice = null;
+    _sdkType = null;
+    notifyListeners();
+  }
+
+
 
   /// ==============================
   /// GETTERS
   /// ==============================
 
-  List<FingerprintDevice> get availableDevices =>
-      _availableDevices;
+  List<FingerprintDevice> get availableDevices => _availableDevices;
 
   bool get isConnected => _isConnected;
 
@@ -557,34 +600,33 @@ void stopFingerprintRegistration() {
 
   FingerprintDevice? get selectedDevice => _selectedDevice;
 
-DateTime? _lastCaptureTime;
-DateTime? get lastCaptureTime => _lastCaptureTime;
+  DateTime? _lastCaptureTime;
+  DateTime? get lastCaptureTime => _lastCaptureTime;
 
-Uint8List? _lastFingerprintImage;
-Uint8List? get lastFingerprintImage => _lastFingerprintImage;
+  Uint8List? _lastFingerprintImage;
+  Uint8List? get lastFingerprintImage => _lastFingerprintImage;
 
-int _lastImageWidth = 256;
-int get lastImageWidth => _lastImageWidth;
+  int _lastImageWidth = 256;
+  int get lastImageWidth => _lastImageWidth;
 
-int _lastImageHeight = 288;
-int get lastImageHeight => _lastImageHeight;
+  int _lastImageHeight = 288;
+  int get lastImageHeight => _lastImageHeight;
 
-bool _isAutoListeningEnabled = false;
-bool _ttsEnabled = true;
+  bool _isAutoListeningEnabled = false;
+  bool _ttsEnabled = true;
 
-bool _isRegistering = false;
+  bool _isRegistering = false;
 
-bool get isAutoListeningEnabled => _isAutoListeningEnabled;
-bool get isTTSEnabled => _ttsEnabled;
+  bool get isAutoListeningEnabled => _isAutoListeningEnabled;
+  bool get isTTSEnabled => _ttsEnabled;
 
-// ------------------
-// REGISTRATION CALLBACKS
-// ------------------
+  // ------------------
+  // REGISTRATION CALLBACKS
+  // ------------------
 
-VoidCallback? onFingerDetected;
+  VoidCallback? onFingerDetected;
 
-Function(bool isReading, String? error)? onRegistrationStatusChange;
+  Function(bool isReading, String? error)? onRegistrationStatusChange;
 
-VoidCallback? onRegistrationSuccess;
-
+  VoidCallback? onRegistrationSuccess;
 }

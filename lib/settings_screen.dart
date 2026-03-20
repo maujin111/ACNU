@@ -230,82 +230,90 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
                   ),
 
                 const Divider(),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: Text(
-                      "Timbraje Biométrico",
-                      style: Theme.of(context).textTheme.headlineSmall,
+
+                //Biometrico
+                if (Platform.isWindows ||
+                    Platform.isLinux ||
+                    Platform.isMacOS) ...[
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Text(
+                        "Timbraje Biométrico",
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
                     ),
                   ),
-                ),
-                Consumer<FingerprintReaderService>(
-                  builder: (context, fingerprintService, _) {
-                    return ListTile(
-                      title: const Text('Escucha automática'),
-                      subtitle: const Text(
-                        'Detectar huellas automáticamente al iniciar la aplicación para timbraje',
-                      ),
-                      trailing: Switch(
-                        value: fingerprintService.isAutoListeningEnabled,
-                        onChanged: (value) async {
-                          await fingerprintService.setAutoListeningEnabled(
-                            value,
-                          );
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  value
-                                      ? '✅ Escucha automática habilitada'
-                                      : '🛑 Escucha automática deshabilitada',
-                                ),
-                                duration: const Duration(seconds: 2),
-                              ),
+
+                  Consumer<FingerprintReaderService>(
+                    builder: (context, fingerprintService, _) {
+                      return ListTile(
+                        title: const Text('Escucha automática'),
+                        subtitle: const Text(
+                          'Detectar huellas automáticamente al iniciar la aplicación para timbraje',
+                        ),
+                        trailing: Switch(
+                          value: fingerprintService.isAutoListeningEnabled,
+                          onChanged: (value) async {
+                            await fingerprintService.setAutoListeningEnabled(
+                              value,
                             );
-                          }
-                        },
-                      ),
-                    );
-                  },
-                ),
-                Consumer<FingerprintReaderService>(
-                  builder: (context, fingerprintService, _) {
-                    return FutureBuilder<bool>(
-                      future: ConfigService.loadTTSEnabled(),
-                      initialData: true,
-                      builder: (context, snapshot) {
-                        final ttsEnabled = snapshot.data ?? true;
-                        return ListTile(
-                          title: const Text('Mensajes de voz'),
-                          subtitle: const Text(
-                            'Reproducir mensaje de bienvenida al marcar asistencia',
-                          ),
-                          trailing: Switch(
-                            value: ttsEnabled,
-                            onChanged: (value) async {
-                              await fingerprintService.setTTSEnabled(value);
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      value
-                                          ? '🔊 Mensajes de voz habilitados'
-                                          : '🔇 Mensajes de voz deshabilitados',
-                                    ),
-                                    duration: const Duration(seconds: 2),
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    value
+                                        ? '✅ Escucha automática habilitada'
+                                        : '🛑 Escucha automática deshabilitada',
                                   ),
-                                );
-                              }
-                            },
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
-                const Divider(),
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                  Consumer<FingerprintReaderService>(
+                    builder: (context, fingerprintService, _) {
+                      return FutureBuilder<bool>(
+                        future: ConfigService.loadTTSEnabled(),
+                        initialData: true,
+                        builder: (context, snapshot) {
+                          final ttsEnabled = snapshot.data ?? true;
+                          return ListTile(
+                            title: const Text('Mensajes de voz'),
+                            subtitle: const Text(
+                              'Reproducir mensaje de bienvenida al marcar asistencia',
+                            ),
+                            trailing: Switch(
+                              value: ttsEnabled,
+                              onChanged: (value) async {
+                                await fingerprintService.setTTSEnabled(value);
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        value
+                                            ? '🔊 Mensajes de voz habilitados'
+                                            : '🔇 Mensajes de voz deshabilitados',
+                                      ),
+                                      duration: const Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              },
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                  const Divider(),
+                ],
+
                 //Seccion impresora pos
                 Align(
                   alignment: Alignment.centerLeft,
@@ -387,68 +395,71 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
                     ],
                   ),
                 ),
-                const Divider(),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: Text(
-                      "Aplicación",
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Center(
-                    child: ElevatedButton(
-                      onPressed: () async {
-                        if (!mounted) return;
-                        final shouldClose = await showDialog<bool>(
-                          context: context,
-                          builder: (BuildContext context) {
-                            return AlertDialog(
-                              title: const Text('Cerrar aplicación'),
-                              content: const Text(
-                                '¿Estás seguro de que quieres cerrar la aplicación?',
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed:
-                                      () => Navigator.of(context).pop(false),
-                                  child: const Text('Cancelar'),
-                                ),
-                                TextButton(
-                                  onPressed:
-                                      () => Navigator.of(context).pop(true),
-                                  child: const Text('Cerrar'),
-                                ),
-                              ],
-                            );
-                          },
-                        );
 
-                        if (shouldClose == true) {
-                          // Guardar el token antes de cerrar
-                          await ConfigService.saveWebSocketToken(
-                            _tokenController.text.trim(),
-                          );
-                          // Cerrar la aplicación
-                          await windowManager.destroy();
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 32,
-                          vertical: 12,
-                        ),
+                if (Platform.isWindows) ...[
+                  const Divider(),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Text(
+                        "Aplicación",
+                        style: Theme.of(context).textTheme.headlineSmall,
                       ),
-                      child: const Text('Cerrar aplicación'),
                     ),
                   ),
-                ),
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Center(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          if (!mounted) return;
+                          final shouldClose = await showDialog<bool>(
+                            context: context,
+                            builder: (BuildContext context) {
+                              return AlertDialog(
+                                title: const Text('Cerrar aplicación'),
+                                content: const Text(
+                                  '¿Estás seguro de que quieres cerrar la aplicación?',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed:
+                                        () => Navigator.of(context).pop(false),
+                                    child: const Text('Cancelar'),
+                                  ),
+                                  TextButton(
+                                    onPressed:
+                                        () => Navigator.of(context).pop(true),
+                                    child: const Text('Cerrar'),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+
+                          if (shouldClose == true) {
+                            // Guardar el token antes de cerrar
+                            await ConfigService.saveWebSocketToken(
+                              _tokenController.text.trim(),
+                            );
+                            // Cerrar la aplicación
+                            await windowManager.destroy();
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 32,
+                            vertical: 12,
+                          ),
+                        ),
+                        child: const Text('Cerrar aplicación'),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

@@ -441,6 +441,7 @@ class ConfigService {
     return prefs.getBool(_beepKey) ?? false;
   }
 
+
   // MÉTODOS PARA LECTOR NFC
   static const String _nfcReaderKey = 'saved_nfc_reader';
 

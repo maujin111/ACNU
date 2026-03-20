@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:anfibius_uwu/services/fingerprint_reader_service.dart';
 import 'package:anfibius_uwu/services/nfc_service.dart';
 import 'package:anfibius_uwu/services/print_job_service.dart';
 import 'package:anfibius_uwu/services/printer_service.dart';
@@ -8,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_pos_printer_platform_image_3/flutter_pos_printer_platform_image_3.dart';
 import 'package:flutter_esc_pos_utils/flutter_esc_pos_utils.dart';
 import 'package:anfibius_uwu/services/nfc_pcsc_service.dart';
+import 'dart:io' show Platform;
 
 class Dispositivos extends StatefulWidget {
   const Dispositivos({super.key});
@@ -83,6 +85,7 @@ class _DispositivosState extends State<Dispositivos> {
     final printerService = Provider.of<PrinterService>(context);
     final webSocketService = Provider.of<WebSocketService>(context);
     final nfcService = Provider.of<NfcPcscService>(context);
+    final fingerprintService = Provider.of<FingerprintReaderService>(context);
 
     // Verificar cambios en la conexión
     _checkConnectionChanges();
@@ -155,7 +158,8 @@ class _DispositivosState extends State<Dispositivos> {
                 // Información de la impresora
 
                 // Nueva sección: Múltiples Impresoras
-                if (nfcService.savedReaderName != null || printerService.connectedPrinters.isNotEmpty) ...[
+                if (nfcService.savedReaderName != null ||
+                    printerService.connectedPrinters.isNotEmpty) ...[
                   const SizedBox(height: 20),
                   Card(
                     margin: const EdgeInsets.all(8.0),
@@ -487,20 +491,24 @@ class _DispositivosState extends State<Dispositivos> {
                           }),
 
                           // Lector NFC
-                          const SizedBox(height: 15),
+                          const SizedBox(height: 8),
                           if (nfcService.savedReaderName != null)
                             Container(
                               margin: const EdgeInsets.only(bottom: 12.0),
                               padding: const EdgeInsets.all(12.0),
                               decoration: BoxDecoration(
                                 border: Border.all(
-                                  color: nfcService.isReaderConnected ? Colors.green : Colors.red,
+                                  color:
+                                      nfcService.isReaderConnected
+                                          ? Colors.green
+                                          : Colors.red,
                                   width: 1.5,
                                 ),
                                 borderRadius: BorderRadius.circular(8.0),
-                                color: nfcService.isReaderConnected
-                                    ? Colors.green.withOpacity(0.05)
-                                    : Colors.red.withOpacity(0.05),
+                                color:
+                                    nfcService.isReaderConnected
+                                        ? Colors.green.withOpacity(0.05)
+                                        : Colors.red.withOpacity(0.05),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -509,40 +517,66 @@ class _DispositivosState extends State<Dispositivos> {
                                     children: [
                                       Icon(
                                         Icons.nfc,
-                                        color: nfcService.isReaderConnected ? Colors.green : Colors.red,
+                                        color:
+                                            nfcService.isReaderConnected
+                                                ? Colors.green
+                                                : Colors.red,
                                         size: 20,
                                       ),
                                       const SizedBox(width: 8),
                                       Expanded(
                                         child: Text(
                                           nfcService.savedReaderName!,
-                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
                                         ),
                                       ),
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8.0,
+                                          vertical: 4.0,
+                                        ),
                                         decoration: BoxDecoration(
-                                          color: nfcService.isReaderConnected ? Colors.green : Colors.red,
-                                          borderRadius: BorderRadius.circular(12.0),
+                                          color:
+                                              nfcService.isReaderConnected
+                                                  ? Colors.green
+                                                  : Colors.red,
+                                          borderRadius: BorderRadius.circular(
+                                            12.0,
+                                          ),
                                         ),
                                         child: Text(
-                                          nfcService.isReaderConnected ? "Conectado" : "Desconectado",
-                                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                                          nfcService.isReaderConnected
+                                              ? "Conectado"
+                                              : "Desconectado",
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
                                       ),
                                     ],
                                   ),
                                   const SizedBox(height: 8),
                                   Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
                                     children: [
                                       Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           if (nfcService.isReading)
                                             const Text(
                                               "Estado: Esperando tarjeta...",
-                                              style: TextStyle(fontSize: 13, color: Colors.orange, fontStyle: FontStyle.italic),
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: Colors.orange,
+                                                fontStyle: FontStyle.italic,
+                                              ),
                                             ),
                                         ],
                                       ),
@@ -551,22 +585,41 @@ class _DispositivosState extends State<Dispositivos> {
                                         children: [
                                           // Botón para DESVINCULAR
                                           IconButton(
-                                            icon: const Icon(Icons.link_off, size: 18, color: Colors.orange),
+                                            icon: const Icon(
+                                              Icons.link_off,
+                                              size: 18,
+                                              color: Colors.orange,
+                                            ),
                                             tooltip: 'Desvincular lector',
                                             onPressed: () async {
                                               await nfcService.forgetReader();
                                               if (context.mounted) {
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                  const SnackBar(content: Text('Lector NFC desvinculado'), backgroundColor: Colors.orange),
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text(
+                                                      'Lector NFC desvinculado',
+                                                    ),
+                                                    backgroundColor:
+                                                        Colors.orange,
+                                                  ),
                                                 );
                                               }
                                             },
                                           ),
                                           // Botón para Refrescar
                                           IconButton(
-                                            icon: const Icon(Icons.refresh, size: 18, color: Colors.blue),
+                                            icon: const Icon(
+                                              Icons.refresh,
+                                              size: 18,
+                                              color: Colors.blue,
+                                            ),
                                             tooltip: 'Actualizar estado',
-                                            onPressed: () => nfcService.checkReaderStatus(),
+                                            onPressed:
+                                                () =>
+                                                    nfcService
+                                                        .checkReaderStatus(),
                                           ),
                                         ],
                                       ),
@@ -575,6 +628,199 @@ class _DispositivosState extends State<Dispositivos> {
                                 ],
                               ),
                             ),
+
+                          // Lector Biométrico
+                          const SizedBox(height: 8),
+                          if (Platform.isWindows &&
+                              fingerprintService.selectedDevice != null) ...[
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 12.0),
+                              padding: const EdgeInsets.all(12.0),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color:
+                                      fingerprintService.isConnected
+                                          ? Colors.green
+                                          : Colors.red,
+                                  width: 1.5,
+                                ),
+                                borderRadius: BorderRadius.circular(8.0),
+                                color:
+                                    fingerprintService.isConnected
+                                        ? Colors.green.withOpacity(0.05)
+                                        : Colors.red.withOpacity(0.05),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.fingerprint,
+                                        color:
+                                            fingerprintService.isConnected
+                                                ? Colors.green
+                                                : Colors.red,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          fingerprintService
+                                              .selectedDevice!
+                                              .name,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8.0,
+                                          vertical: 4.0,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color:
+                                              fingerprintService.isConnected
+                                                  ? Colors.green
+                                                  : Colors.red,
+                                          borderRadius: BorderRadius.circular(
+                                            12.0,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          fingerprintService.isConnected
+                                              ? "Conectado"
+                                              : "Desconectado",
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          if (fingerprintService.isScanning)
+                                            const Text(
+                                              "Estado: Escuchando huella...",
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: Colors.blue,
+                                                fontStyle: FontStyle.normal,
+                                              ),
+                                            )
+                                          else if (fingerprintService
+                                              .isConnected)
+                                            const Text(
+                                              "Estado: En espera",
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: Colors.grey,
+                                                fontStyle: FontStyle.normal,
+                                              ),
+                                            )
+                                          else
+                                            const Text(
+                                              "Estado: Apagado",
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: Colors.red,
+                                                fontStyle: FontStyle.normal,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (fingerprintService.isConnected)
+                                            IconButton(
+                                              icon: Icon(
+                                                fingerprintService.isScanning
+                                                    ? Icons.stop_circle
+                                                    : Icons.play_circle_fill,
+                                                size: 22,
+                                                color:
+                                                    fingerprintService
+                                                            .isScanning
+                                                        ? Colors.orange
+                                                        : Colors.blue,
+                                              ),
+                                              tooltip:
+                                                  fingerprintService.isScanning
+                                                      ? 'Detener escucha'
+                                                      : 'Iniciar escucha',
+                                              onPressed: () {
+                                                if (fingerprintService
+                                                    .isScanning) {
+                                                  fingerprintService
+                                                      .stopListening();
+                                                } else {
+                                                  fingerprintService
+                                                      .startListening();
+                                                }
+                                              },
+                                            ),
+
+                                          // Botón Conectar/Desconectar
+                                          IconButton(
+                                            icon: Icon(
+                                              fingerprintService.isConnected
+                                                  ? Icons.link_off
+                                                  : Icons.link,
+                                              size: 20,
+                                              color:
+                                                  fingerprintService.isConnected
+                                                      ? Colors.orange
+                                                      : Colors.blue,
+                                            ),
+                                            tooltip:
+                                                fingerprintService.isConnected
+                                                    ? 'Desconectar'
+                                                    : 'Conectar',
+                                            onPressed: () async {
+                                              if (fingerprintService
+                                                  .isConnected) {
+                                                await fingerprintService
+                                                    .disconnect();
+                                              } else {
+                                                await fingerprintService
+                                                    .connectToDevice();
+                                              }
+                                            },
+                                          ),
+
+                                          IconButton(
+                                            icon: const Icon(
+                                              Icons.delete_outline,
+                                              size: 20,
+                                              color: Colors.red,
+                                            ),
+                                            tooltip: 'Olvidar dispositivo',
+                                            onPressed: () async {
+                                              await fingerprintService
+                                                  .forgetDevice();
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),

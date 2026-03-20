@@ -232,10 +232,14 @@ class _PrinterConfigState extends State<PrinterConfig> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            "Impresoras Conectadas",
-                            style: Theme.of(context).textTheme.headlineSmall,
+                          Expanded(
+                            child: Text(
+                              "Impresoras Conectadas",
+                              style: Theme.of(context).textTheme.headlineSmall,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
+                          const SizedBox(width: 8),
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [

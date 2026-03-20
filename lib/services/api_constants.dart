@@ -1,3 +1,3 @@
 class ApiConstants {
-  static const String baseUrl = 'https://web.anfibius.net:8181';
+  static const String baseUrl = 'http://10.0.1.13:8080';
 }

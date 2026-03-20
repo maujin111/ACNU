@@ -227,7 +227,7 @@ class MyApp extends StatelessWidget {
       ],
       child: Consumer<ThemeService>(
         builder: (context, themeService, child) {
-           // Envolver con WithForegroundTask solo en Android
+          // Envolver con WithForegroundTask solo en Android
           if (Platform.isAndroid) {
             return WithForegroundTask(
               child: MaterialApp(
@@ -308,7 +308,8 @@ class ThemeService extends ChangeNotifier {
     notifyListeners();
   }
 }
-  class MyHomePage extends StatefulWidget {
+
+class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
   final String title;
 
@@ -350,17 +351,20 @@ class _MyHomePageState extends State<MyHomePage>
       _setupAutoPrint();
     });
 
-    final fingerprintService = Provider.of<FingerprintReaderService>(context, listen: false);
-        fingerprintService.onAttendanceMarked = (response) {
-          if (mounted) {
-            _showAttendanceNotification(response);
-          }
-        };
+    final fingerprintService = Provider.of<FingerprintReaderService>(
+      context,
+      listen: false,
+    );
+    fingerprintService.onAttendanceMarked = (response) {
+      if (mounted) {
+        _showAttendanceNotification(response);
+      }
+    };
 
     // Solicitar permisos críticos al inicio
     _pedirPermisosIniciales();
   }
-  
+
   void _showAttendanceNotification(Map<String, dynamic> response) {
     final empleado = '${response['nombres']} ${response['apellidos']}';
     final fecha = response['fecha_marcacion'];
@@ -1109,4 +1113,3 @@ class _MyHomePageState extends State<MyHomePage>
     );
   }
 }
-
