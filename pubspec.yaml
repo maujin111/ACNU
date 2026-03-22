@@ -108,11 +108,12 @@ msix_config:
   display_name: AnfibiusConnect
   publisher_display_name: Corp. Anfibius
   identity_name: Corp.Anfibius.AnfibiusConnect
-  msix_version: 1.0.0.0
+  msix_version: 2.0.0.0
   logo_path: assets/icon/anficon.png
   capabilities: 'internetClient,removableStorage'
   store: true
   publisher: CN=EE5F7164-63B8-47BB-A93B-7709F27A1A24
+  output_name: AnfibiusConnect
 
 flutter_native_splash:
   color: "#f4fbed"
