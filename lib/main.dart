@@ -141,6 +141,10 @@ Future<void> _mainInit(List<String> args) async {
                 ? packageInfo.appName
                 : 'Anfibius Connect Nexus Utility',
         appPath: Platform.resolvedExecutable,
+        packageName:
+            packageInfo.packageName.isNotEmpty
+                ? packageInfo.packageName
+                : 'Corp.Anfibius.AnfibiusConnect',
       );
       print('✅ Launch at startup configurado');
     } catch (e) {
@@ -210,9 +214,11 @@ class MyApp extends StatelessWidget {
               (context) => FingerprintReaderService(
                 Provider.of<AuthService>(context, listen: false),
               ),
-          update:
-              (context, authService, fingerprintReaderService) =>
-                  FingerprintReaderService(authService),
+          update: (context, authService, previous) {
+            // ✅ En lugar de crear uno nuevo, solo le actualizamos la credencial
+            previous?.updateAuthService(authService);
+            return previous ?? FingerprintReaderService(authService);
+          },
         ),
         ChangeNotifierProvider(create: (_) => ObjetivosService()),
         ProxyProvider<PrinterService, PrintJobService>(
@@ -384,8 +390,8 @@ class _MyHomePageState extends State<MyHomePage>
                     '✅ Marcación exitosa',
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  Text('$empleado'),
-                  Text('$fecha', style: const TextStyle(fontSize: 12)),
+                  // Text('$empleado'),
+                  // Text('$fecha', style: const TextStyle(fontSize: 12)),
                 ],
               ),
             ),
@@ -1032,16 +1038,16 @@ class _MyHomePageState extends State<MyHomePage>
             },
           ),
           // Botón para ver logs
-          IconButton(
-            icon: const Icon(Icons.article_outlined),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const LogsScreen()),
-              );
-            },
-            tooltip: 'Ver logs del sistema',
-          ),
+          // IconButton(
+          //   icon: const Icon(Icons.article_outlined),
+          //   onPressed: () {
+          //     Navigator.push(
+          //       context,
+          //       MaterialPageRoute(builder: (context) => const LogsScreen()),
+          //     );
+          //   },
+          //   tooltip: 'Ver logs del sistema',
+          // ),
           // Botón de tema
           IconButton(
             icon: Icon(

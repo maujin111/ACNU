@@ -12,7 +12,19 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   HANDLE hMutex = CreateMutex(NULL, TRUE, L"AnfibiusConnect_Unique_Mutex_Lock");
   if (GetLastError() == ERROR_ALREADY_EXISTS) {
-    MessageBox(NULL, L"Anfibius connect is already running.", L"Anfibius Connect", MB_OK | MB_ICONERROR | MB_TOPMOST);
+    // Buscar la ventana de la instancia que ya está abierta por su título
+    HWND hwnd = FindWindow(NULL, L"Anfibius Connect");
+    
+    if (hwnd) {
+      // Si la ventana está minimizada (en la barra de tareas), la restaura
+      if (IsIconic(hwnd)) {
+        ShowWindow(hwnd, SW_RESTORE);
+      }
+      // Fuerza a la ventana a saltar al primer plano
+      SetForegroundWindow(hwnd);
+    }
+    
+    // Cierra el hilo de esta segunda instancia silenciosamente
     CloseHandle(hMutex);
     return EXIT_SUCCESS; 
   }
@@ -21,8 +33,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     CreateAndAttachConsole();
   }
 
-  // Initialize COM, so that it is available for use in the library and/or
-  // plugins.
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
   flutter::DartProject project(L"data");

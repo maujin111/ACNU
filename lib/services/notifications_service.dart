@@ -12,10 +12,10 @@ class NotificationsService {
 
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
-  
-  final FlutterLocalNotificationsPlugin notifications = FlutterLocalNotificationsPlugin();
 
-  
+  final FlutterLocalNotificationsPlugin notifications =
+      FlutterLocalNotificationsPlugin();
+
   // 🆕 Callback para manejar clicks en notificaciones
   Function(String? payload)? onNotificationClick;
 
@@ -46,9 +46,7 @@ class NotificationsService {
 
     // Configuración para Linux
     const LinuxInitializationSettings initializationSettingsLinux =
-        LinuxInitializationSettings(
-          defaultActionName: 'Open notification',
-        );
+        LinuxInitializationSettings(defaultActionName: 'Open notification');
 
     // Configuración general para todos los sistemas
     final InitializationSettings initializationSettings =
@@ -74,20 +72,21 @@ class NotificationsService {
         ?.requestPermissions(alert: true, badge: true, sound: true);
   }
 
-// Método para inicializar las notificaciones con el callback de click
+  // Método para inicializar las notificaciones con el callback de click
   Future<void> initNotifications() async {
-      const AndroidInitializationSettings androidInit =
-      AndroidInitializationSettings('@mipmap/ic_launcher');
+    const AndroidInitializationSettings androidInit =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
 
-      const InitializationSettings settings =
-      InitializationSettings(android: androidInit);
+    const InitializationSettings settings = InitializationSettings(
+      android: androidInit,
+    );
 
-      await notifications.initialize(
-        settings,
-        onDidReceiveNotificationResponse: (response) {
-          navigatorKey.currentState?.pushNamed('/nfc');
-        },
-      );
+    await notifications.initialize(
+      settings,
+      onDidReceiveNotificationResponse: (response) {
+        navigatorKey.currentState?.pushNamed('/nfc');
+      },
+    );
   }
 
   // Método para mostrar una notificación simple en todos los sistemas
@@ -118,9 +117,7 @@ class NotificationsService {
 
     // Detalles de la notificación para Linux
     const LinuxNotificationDetails linuxPlatformChannelSpecifics =
-        LinuxNotificationDetails(
-          urgency: LinuxNotificationUrgency.normal,
-        );
+        LinuxNotificationDetails(urgency: LinuxNotificationUrgency.normal);
 
     // Detalles generales para todos los sistemas
     const NotificationDetails platformChannelSpecifics = NotificationDetails(
@@ -168,9 +165,7 @@ class NotificationsService {
 
     // Detalles de la notificación para Linux
     const LinuxNotificationDetails linuxPlatformChannelSpecifics =
-        LinuxNotificationDetails(
-          urgency: LinuxNotificationUrgency.normal,
-        );
+        LinuxNotificationDetails(urgency: LinuxNotificationUrgency.normal);
 
     // Detalles generales para todos los sistemas
     const NotificationDetails platformChannelSpecifics = NotificationDetails(
@@ -195,7 +190,7 @@ class NotificationsService {
       platformChannelSpecifics,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       payload: payload,
-     // uiLocalNotificationDateInterpretation:UILocalNotificationDateInterpretation.absoluteTime,
+      // uiLocalNotificationDateInterpretation:UILocalNotificationDateInterpretation.absoluteTime,
     );
   }
 

@@ -20,10 +20,8 @@ class WebSocketService extends ChangeNotifier {
   WebSocketChannel? _channel;
   String? _token;
   bool _isConnected = false;
-  final List<String> _messages =
-      []; 
-  final List<PrintHistoryItem> _historyItems =
-      []; 
+  final List<String> _messages = [];
+  final List<PrintHistoryItem> _historyItems = [];
   StreamSubscription? _subscription;
 
   Timer? _reconnectTimer;
@@ -34,9 +32,7 @@ class WebSocketService extends ChangeNotifier {
 
   Timer? _watchdogTimer;
   DateTime? _lastSuccessfulActivity;
-  static const Duration _watchdogTimeout = Duration(
-    minutes: 5,
-  ); 
+  static const Duration _watchdogTimeout = Duration(minutes: 5);
 
   int _reconnectAttempts = 0;
   static const int _maxReconnectAttempts = 10;
@@ -70,7 +66,7 @@ class WebSocketService extends ChangeNotifier {
 
     if (payload == 'reconnect') {
       logger.info('Usuario solicitó reconexión desde notificación');
-      reconnect(); 
+      reconnect();
     }
   }
 
@@ -358,7 +354,7 @@ class WebSocketService extends ChangeNotifier {
         print(
           '⚠️ [${DateTime.now()}] Timeout esperando conexión actual, abortando',
         );
-        _isConnecting = false; 
+        _isConnecting = false;
       }
     }
 
@@ -440,7 +436,7 @@ class WebSocketService extends ChangeNotifier {
         }
       }
 
-      String baseUrl = 'wss://soporte.anfibius.net:3300/$_token';
+      String baseUrl = 'ws://10.0.1.33:3300/$_token';
       if (_lastSeenTimestamp > 0) {
         baseUrl += '?since=$_lastSeenTimestamp';
       }
@@ -571,14 +567,13 @@ class WebSocketService extends ChangeNotifier {
               );
               _handleWebSocketError(error, urlString);
             },
-            cancelOnError: false, 
+            cancelOnError: false,
           );
 
           _isConnected = true;
-          _reconnectAttempts = 0; 
-          _lastSuccessfulActivity =
-              DateTime.now(); 
-          _startHeartbeat(); 
+          _reconnectAttempts = 0;
+          _lastSuccessfulActivity = DateTime.now();
+          _startHeartbeat();
           _safeNotifyListeners();
           logger.success('✅ CONEXIÓN EXITOSA a: $urlString');
           if (Platform.isAndroid && _token != null) {
@@ -588,9 +583,7 @@ class WebSocketService extends ChangeNotifier {
           logger.info('Contador de intentos reseteado a 0');
           print('✅ Conectado exitosamente a: $urlString');
 
-
-
-          return; 
+          return;
         } catch (e) {
           String errorMessage = _getDetailedErrorMessage(e, urlString);
           logger.warning('Fallo al conectar: $errorMessage');
@@ -602,7 +595,7 @@ class WebSocketService extends ChangeNotifier {
       logger.info('Intentos realizados en todas las 4 URLs');
       print('❌ No se pudo conectar con ninguna de las URLs disponibles');
       _isConnected = false;
-      _isConnecting = false; 
+      _isConnecting = false;
       _safeNotifyListeners();
 
       if (_shouldAutoReconnect && !_isSystemSuspending) {
@@ -664,7 +657,7 @@ class WebSocketService extends ChangeNotifier {
 
       int delaySeconds;
       if (_reconnectAttempts == 1) {
-        delaySeconds = 1; 
+        delaySeconds = 1;
       } else if (_reconnectAttempts == 2) {
         delaySeconds = 2;
       } else if (_reconnectAttempts == 3) {
@@ -674,7 +667,7 @@ class WebSocketService extends ChangeNotifier {
       } else if (_reconnectAttempts == 5) {
         delaySeconds = 10;
       } else {
-        delaySeconds = 15; 
+        delaySeconds = 15;
       }
 
       logger.info(
@@ -944,9 +937,9 @@ class WebSocketService extends ChangeNotifier {
 
       final historyLiveRegex = RegExp(r'^\[(HISTORIAL|LIVE)\|(\d+)\]\s(.*)');
       final historyMatch = historyLiveRegex.firstMatch(cleanMessage);
-      
+
       String jsonMessage = cleanMessage;
-      
+
       if (historyMatch != null) {
         _lastSeenTimestamp = int.parse(historyMatch.group(2)!);
         jsonMessage = historyMatch.group(3)!;
@@ -1213,6 +1206,7 @@ class WebSocketService extends ChangeNotifier {
       print('🤖 Android - Servicio de primer plano mantiene la conexión');
     }
   }
+
   void onAppResumed() {
     if (_isDisposed) {
       print('⚠️ [${DateTime.now()}] Servicio disposed, ignorando onAppResumed');

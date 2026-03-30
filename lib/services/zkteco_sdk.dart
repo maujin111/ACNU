@@ -21,49 +21,40 @@ class ZKTecoSDK {
   // SDK BASICO
   // =============================
 
-  late final int Function() init =
-      _lib.lookupFunction<Int32 Function(), int Function()>('ZKFPM_Init');
+  late final int Function() init = _lib
+      .lookupFunction<Int32 Function(), int Function()>('ZKFPM_Init');
 
-  late final int Function() terminate =
-      _lib.lookupFunction<Int32 Function(), int Function()>('ZKFPM_Terminate');
+  late final int Function() terminate = _lib
+      .lookupFunction<Int32 Function(), int Function()>('ZKFPM_Terminate');
 
-  late final int Function() getDeviceCount =
-      _lib.lookupFunction<Int32 Function(), int Function()>('ZKFPM_GetDeviceCount');
+  late final int Function() getDeviceCount = _lib
+      .lookupFunction<Int32 Function(), int Function()>('ZKFPM_GetDeviceCount');
 
-  late final Pointer<Void> Function(int) openDevice =
-      _lib.lookupFunction<Pointer<Void> Function(Int32),
-          Pointer<Void> Function(int)>('ZKFPM_OpenDevice');
+  late final Pointer<Void> Function(int) openDevice = _lib.lookupFunction<
+    Pointer<Void> Function(Int32),
+    Pointer<Void> Function(int)
+  >('ZKFPM_OpenDevice');
 
-  late final int Function(Pointer<Void>) closeDevice =
-      _lib.lookupFunction<Int32 Function(Pointer<Void>),
-          int Function(Pointer<Void>)>('ZKFPM_CloseDevice');
+  late final int Function(Pointer<Void>) closeDevice = _lib.lookupFunction<
+    Int32 Function(Pointer<Void>),
+    int Function(Pointer<Void>)
+  >('ZKFPM_CloseDevice');
 
   // =============================
   // PARAMETROS
   // =============================
 
-  late final int Function(
-    Pointer<Void>,
-    int,
-    Pointer<Uint8>,
-    Pointer<Uint32>,
-  ) getParameters =
-      _lib.lookupFunction<
-          Int32 Function(
-              Pointer<Void>, Int32, Pointer<Uint8>, Pointer<Uint32>),
-          int Function(Pointer<Void>, int, Pointer<Uint8>,
-              Pointer<Uint32>)>('ZKFPM_GetParameters');
+  late final int Function(Pointer<Void>, int, Pointer<Uint8>, Pointer<Uint32>)
+  getParameters = _lib.lookupFunction<
+    Int32 Function(Pointer<Void>, Int32, Pointer<Uint8>, Pointer<Uint32>),
+    int Function(Pointer<Void>, int, Pointer<Uint8>, Pointer<Uint32>)
+  >('ZKFPM_GetParameters');
 
-  late final int Function(
-    Pointer<Void>,
-    int,
-    Pointer<Uint8>,
-    int,
-  ) setParameters =
-      _lib.lookupFunction<
-          Int32 Function(Pointer<Void>, Int32, Pointer<Uint8>, Int32),
-          int Function(
-              Pointer<Void>, int, Pointer<Uint8>, int)>('ZKFPM_SetParameters');
+  late final int Function(Pointer<Void>, int, Pointer<Uint8>, int)
+  setParameters = _lib.lookupFunction<
+    Int32 Function(Pointer<Void>, Int32, Pointer<Uint8>, Int32),
+    int Function(Pointer<Void>, int, Pointer<Uint8>, int)
+  >('ZKFPM_SetParameters');
 
   // =============================
   // CAPTURA
@@ -75,35 +66,43 @@ class ZKTecoSDK {
     int,
     Pointer<Uint8>,
     Pointer<Uint32>,
-  ) acquireFingerprint =
-      _lib.lookupFunction<
-          Int32 Function(Pointer<Void>, Pointer<Uint8>, Uint32,
-              Pointer<Uint8>, Pointer<Uint32>),
-          int Function(Pointer<Void>, Pointer<Uint8>, int,
-              Pointer<Uint8>, Pointer<Uint32>)>('ZKFPM_AcquireFingerprint');
+  )
+  acquireFingerprint = _lib.lookupFunction<
+    Int32 Function(
+      Pointer<Void>,
+      Pointer<Uint8>,
+      Uint32,
+      Pointer<Uint8>,
+      Pointer<Uint32>,
+    ),
+    int Function(
+      Pointer<Void>,
+      Pointer<Uint8>,
+      int,
+      Pointer<Uint8>,
+      Pointer<Uint32>,
+    )
+  >('ZKFPM_AcquireFingerprint');
 
   // =============================
   // BASE DE DATOS
   // =============================
 
-  late final Pointer<Void> Function() dbInit =
-      _lib.lookupFunction<Pointer<Void> Function(), Pointer<Void> Function()>(
-          'ZKFPM_DBInit');
+  late final Pointer<Void> Function() dbInit = _lib
+      .lookupFunction<Pointer<Void> Function(), Pointer<Void> Function()>(
+        'ZKFPM_DBInit',
+      );
 
-  late final int Function(Pointer<Void>) dbFree =
-      _lib.lookupFunction<Int32 Function(Pointer<Void>),
-          int Function(Pointer<Void>)>('ZKFPM_DBFree');
+  late final int Function(Pointer<Void>) dbFree = _lib.lookupFunction<
+    Int32 Function(Pointer<Void>),
+    int Function(Pointer<Void>)
+  >('ZKFPM_DBFree');
 
-  late final int Function(
-    Pointer<Void>,
-    int,
-    Pointer<Uint8>,
-    int,
-  ) dbAdd =
-      _lib.lookupFunction<
-          Int32 Function(Pointer<Void>, Uint32, Pointer<Uint8>, Uint32),
-          int Function(
-              Pointer<Void>, int, Pointer<Uint8>, int)>('ZKFPM_DBAdd');
+  late final int Function(Pointer<Void>, int, Pointer<Uint8>, int) dbAdd = _lib
+      .lookupFunction<
+        Int32 Function(Pointer<Void>, Uint32, Pointer<Uint8>, Uint32),
+        int Function(Pointer<Void>, int, Pointer<Uint8>, int)
+      >('ZKFPM_DBAdd');
 
   late final int Function(
     Pointer<Void>,
@@ -111,12 +110,17 @@ class ZKTecoSDK {
     int,
     Pointer<Uint8>,
     int,
-  ) dbMatch =
-      _lib.lookupFunction<
-          Int32 Function(Pointer<Void>, Pointer<Uint8>, Uint32,
-              Pointer<Uint8>, Uint32),
-          int Function(Pointer<Void>, Pointer<Uint8>, int,
-              Pointer<Uint8>, int)>('ZKFPM_DBMatch');
+  )
+  dbMatch = _lib.lookupFunction<
+    Int32 Function(
+      Pointer<Void>,
+      Pointer<Uint8>,
+      Uint32,
+      Pointer<Uint8>,
+      Uint32,
+    ),
+    int Function(Pointer<Void>, Pointer<Uint8>, int, Pointer<Uint8>, int)
+  >('ZKFPM_DBMatch');
 
   late final int Function(
     Pointer<Void>,
@@ -124,12 +128,23 @@ class ZKTecoSDK {
     int,
     Pointer<Uint32>,
     Pointer<Uint32>,
-  ) dbIdentify =
-      _lib.lookupFunction<
-          Int32 Function(Pointer<Void>, Pointer<Uint8>, Uint32,
-              Pointer<Uint32>, Pointer<Uint32>),
-          int Function(Pointer<Void>, Pointer<Uint8>, int,
-              Pointer<Uint32>, Pointer<Uint32>)>('ZKFPM_DBIdentify');
+  )
+  dbIdentify = _lib.lookupFunction<
+    Int32 Function(
+      Pointer<Void>,
+      Pointer<Uint8>,
+      Uint32,
+      Pointer<Uint32>,
+      Pointer<Uint32>,
+    ),
+    int Function(
+      Pointer<Void>,
+      Pointer<Uint8>,
+      int,
+      Pointer<Uint32>,
+      Pointer<Uint32>,
+    )
+  >('ZKFPM_DBIdentify');
 
   late final int Function(
     Pointer<Void>,
@@ -138,24 +153,35 @@ class ZKTecoSDK {
     Pointer<Uint8>,
     Pointer<Uint8>,
     Pointer<Uint32>,
-  ) dbMerge =
-      _lib.lookupFunction<
-          Int32 Function(Pointer<Void>, Pointer<Uint8>, Pointer<Uint8>,
-              Pointer<Uint8>, Pointer<Uint8>, Pointer<Uint32>),
-          int Function(
-              Pointer<Void>,
-              Pointer<Uint8>,
-              Pointer<Uint8>,
-              Pointer<Uint8>,
-              Pointer<Uint8>,
-              Pointer<Uint32>)>('ZKFPM_DBMerge');
+  )
+  dbMerge = _lib.lookupFunction<
+    Int32 Function(
+      Pointer<Void>,
+      Pointer<Uint8>,
+      Pointer<Uint8>,
+      Pointer<Uint8>,
+      Pointer<Uint8>,
+      Pointer<Uint32>,
+    ),
+    int Function(
+      Pointer<Void>,
+      Pointer<Uint8>,
+      Pointer<Uint8>,
+      Pointer<Uint8>,
+      Pointer<Uint8>,
+      Pointer<Uint32>,
+    )
+  >('ZKFPM_DBMerge');
 
   // ============================================================
   // METODOS AUXILIARES
   // ============================================================
 
-  int _getIntParameter(Pointer<Void> deviceHandle, int code,
-      {int defaultValue = 0}) {
+  int _getIntParameter(
+    Pointer<Void> deviceHandle,
+    int code, {
+    int defaultValue = 0,
+  }) {
     final valuePtr = calloc<Uint32>();
     final sizePtr = calloc<Uint32>()..value = 4;
 
@@ -190,8 +216,11 @@ class ZKTecoSDK {
   // CAPTURA CORRECTA
   // ============================================================
 
-  ZKCaptureResult? captureFingerprint(Pointer<Void> deviceHandle,
-      {int? prefWidth, int? prefHeight}) {
+  ZKCaptureResult? captureFingerprint(
+    Pointer<Void> deviceHandle, {
+    int? prefWidth,
+    int? prefHeight,
+  }) {
     const templateMaxSize = 2048;
 
     int width = prefWidth ?? getImageWidth(deviceHandle);
@@ -218,22 +247,26 @@ class ZKTecoSDK {
       );
 
       // Log para ver qué está pasando realmente
-      if (result != -1) { // Ignoramos -1 que es "sin dedo" constante
-        print("DEBUG: ZK Acquire Result = $result, TemplateLen = ${templateLenPtr.value}");
+      if (result != -1) {
+        // Ignoramos -1 que es "sin dedo" constante
+        print(
+          "DEBUG: ZK Acquire Result = $result, TemplateLen = ${templateLenPtr.value}",
+        );
       }
 
       // Si el resultado es != 0 y != -8, no hay dedo
       if (result != 0 && result != -8) return null;
 
       final imageData = Uint8List.fromList(imagePtr.asTypedList(imageSize));
-      
+
       // FILTRO DE "NO DEDO": Comprobamos si la imagen tiene contenido real
       // Las imágenes vacías suelen tener todos los píxeles iguales o muy parecidos
       bool hasContent = false;
       final firstPixel = imageData[0];
       // Muestreamos algunos píxeles para ser eficientes
       for (int i = 0; i < imageData.length; i += 100) {
-        if ((imageData[i] - firstPixel).abs() > 30) { // Diferencia de contraste mínima
+        if ((imageData[i] - firstPixel).abs() > 30) {
+          // Diferencia de contraste mínima
           hasContent = true;
           break;
         }
@@ -244,9 +277,10 @@ class ZKTecoSDK {
       final length = templateLenPtr.value;
       return ZKCaptureResult(
         image: imageData,
-        template: (result == 0 && length > 0)
-            ? Uint8List.fromList(templatePtr.asTypedList(length))
-            : Uint8List(0),
+        template:
+            (result == 0 && length > 0)
+                ? Uint8List.fromList(templatePtr.asTypedList(length))
+                : Uint8List(0),
         width: width,
         height: height,
       );
@@ -257,6 +291,64 @@ class ZKTecoSDK {
       calloc.free(imagePtr);
       calloc.free(templatePtr);
       calloc.free(templateLenPtr);
+    }
+  }
+
+  // ============================================================
+  // MÉTODOS AUXILIARES DE ALTO NIVEL (Para usar desde el Service)
+  // ============================================================
+
+  /// Añade una huella a la memoria RAM de forma segura
+  bool addTemplateToMemory(
+    Pointer<Void> dbHandle,
+    int employeeId,
+    Uint8List templateData,
+  ) {
+    final templatePtr = calloc<Uint8>(templateData.length);
+    try {
+      templatePtr.asTypedList(templateData.length).setAll(0, templateData);
+
+      // Llamamos a la función nativa enviando la longitud exacta
+      final result = dbAdd(
+        dbHandle,
+        employeeId,
+        templatePtr,
+        templateData.length,
+      );
+      return result == 0; // 0 significa éxito en ZKTeco
+    } finally {
+      calloc.free(templatePtr); // Evita memory leaks
+    }
+  }
+
+  /// Identifica una huella en milisegundos y retorna el ID del empleado
+  int identifyFingerprint(Pointer<Void> dbHandle, Uint8List templateData) {
+    final templatePtr = calloc<Uint8>(templateData.length);
+    final fidPtr = calloc<Uint32>(); // Aquí C guardará el ID
+    final scorePtr = calloc<Uint32>(); // Aquí C guardará el Score
+
+    try {
+      templatePtr.asTypedList(templateData.length).setAll(0, templateData);
+
+      // Llamamos a la función nativa
+      final result = dbIdentify(
+        dbHandle,
+        templatePtr,
+        templateData.length,
+        fidPtr,
+        scorePtr,
+      );
+
+      if (result == 0) {
+        // 0 = Match encontrado!
+        print("🔍 Match exitoso | Score de similitud: ${scorePtr.value}");
+        return fidPtr.value; // Retornamos el ID recuperado del puntero
+      }
+      return -1; // -1 significa que no reconoció a nadie
+    } finally {
+      calloc.free(templatePtr);
+      calloc.free(fidPtr);
+      calloc.free(scorePtr);
     }
   }
 }
@@ -274,4 +366,3 @@ class ZKCaptureResult {
     required this.height,
   });
 }
-  

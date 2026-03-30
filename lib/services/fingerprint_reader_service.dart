@@ -13,6 +13,9 @@ import '../services/hikvision_sdk.dart';
 import '../services/zkteco_sdk.dart';
 import '../services/tts_service.dart';
 
+import 'package:encrypt/encrypt.dart' as encrypt;
+import 'package:crypto/crypto.dart';
+
 class FingerprintDevice {
   final String id;
   final String name;
@@ -22,10 +25,13 @@ class FingerprintDevice {
 }
 
 class FingerprintReaderService extends ChangeNotifier {
-  final AuthService _authService;
+  AuthService _authService;
   final TTSService _ttsService = TTSService();
 
-  static const String _baseUrl = 'http://10.0.1.13:8080/anfibiusBack/api';
+  static const String _baseUrl = 'http://10.0.1.33:8080/anfibiusBack/api';
+
+  static const String _secureKeyStr = "AnfibiusAppSecureKey2026_32bytes";
+  static const String _initVectorStr = "RandomInitVec123";
 
   /// ==============================
   /// DEVICE STATE
@@ -37,6 +43,7 @@ class FingerprintReaderService extends ChangeNotifier {
   bool _isConnected = false;
   bool _isScanning = false;
   bool _isLooping = false; // Nueva flag para evitar hilos duplicados
+  bool _huellasCargadasEnRam = false;
 
   /// ==============================
   /// SDKs
@@ -67,7 +74,19 @@ class FingerprintReaderService extends ChangeNotifier {
     _init();
   }
 
- Future<void> _init() async {
+  void updateAuthService(AuthService authService) {
+    _authService = authService;
+  }
+
+  @override
+  void dispose() {
+    _isScanning = false;
+    _isLooping = false;
+    disconnect();
+    super.dispose();
+  }
+
+  Future<void> _init() async {
     await _ttsService.initialize();
 
     _isAutoListeningEnabled = await ConfigService.loadAutoListeningEnabled();
@@ -77,14 +96,14 @@ class FingerprintReaderService extends ChangeNotifier {
     await scanDevices();
 
     final savedDeviceData = await ConfigService.loadFingerprintDevice();
-    
+
     if (savedDeviceData != null) {
       _selectedDevice = FingerprintDevice(
         id: savedDeviceData['vendorId'] ?? '',
         name: savedDeviceData['name'] ?? 'Lector Biométrico',
         type: savedDeviceData['type'] ?? '',
       );
-      
+
       if (_selectedDevice!.type.toLowerCase().contains('zk')) {
         _sdkType = 'zkteco';
         _zktecoSDK ??= ZKTecoSDK();
@@ -94,11 +113,10 @@ class FingerprintReaderService extends ChangeNotifier {
       }
 
       final connected = await connect();
-      
+
       if (connected && _isAutoListeningEnabled) {
         startListening();
-      } else if (!connected) {
-      }
+      } else if (!connected) {}
     }
   }
 
@@ -212,12 +230,12 @@ class FingerprintReaderService extends ChangeNotifier {
         if (_zkDBHandle == null) return false;
 
         _isConnected = true;
+        await _loadFingerprintsToMemory();
       }
 
       if (_sdkType == 'hikvision') {
         _isConnected = HikvisionSDK.openDevice();
       }
-
 
       onConnectionChanged?.call(_isConnected);
       notifyListeners();
@@ -264,11 +282,15 @@ class FingerprintReaderService extends ChangeNotifier {
   /// START LISTENING
   /// ==============================
 
-  void startListening() {
+  void startListening() async {
     if (!_isConnected) return;
 
     // Si ya estamos escaneando, no hacemos nada para evitar duplicar el hilo
     if (_isScanning) return;
+
+    if (_sdkType == 'zkteco' && !_huellasCargadasEnRam) {
+      await _loadFingerprintsToMemory();
+    }
 
     _isScanning = true;
     if (_sdkType == 'hikvision') {
@@ -301,6 +323,7 @@ class FingerprintReaderService extends ChangeNotifier {
 
   Future<void> _startZKListening() async {
     if (_isLooping) return;
+
     _isLooping = true;
 
     print("Iniciando hilo de escucha ZK...");
@@ -333,20 +356,38 @@ class FingerprintReaderService extends ChangeNotifier {
             final base64 = base64Encode(result.template);
             onFingerprintRead?.call(base64);
 
-            // AUTO-TIMBRADO: Si no estamos registrando, marcamos asistencia
-            if (!_isRegistering) {
-              print("Intentando timbrado automático...");
-              markAttendance(result.template)
-                  .then((response) {
-                    print(response);
+            // AUTO-TIMBRADO
+            if (result.template.isNotEmpty) {
+              final base64 = base64Encode(result.template);
+              onFingerprintRead?.call(base64);
+
+              // AUTO-TIMBRADO: Validación local con la RAM
+              if (!_isRegistering) {
+                print("🔎 Analizando huella localmente...");
+
+                // El SDK compara contra las huellas cargadas y nos da el ID
+                final int matchId = _zktecoSDK!.identifyFingerprint(
+                  _zkDBHandle,
+                  result.template,
+                );
+
+                if (matchId > 0) {
+                  print("✅ Huella reconocida! Empleado ID: $matchId");
+
+                  // Enviamos el timbrado seguro
+                  markAttendanceSeguro(matchId).then((response) {
                     if (response != null) {
-                      print("Timbrado exitoso: ${response['message']}");
+                      print("✅ Timbrado exitoso en BD");
                       onAttendanceMarked?.call(response);
                     }
-                  })
-                  .catchError((e) {
-                    print("Error en timbrado automático: $e");
                   });
+                } else {
+                  print(
+                    "❌ Huella no reconocida (No hace match con ninguna guardada).",
+                  );
+                  // Opcional: _ttsService.sayWelcome("Empleado", "No reconocido");
+                }
+              }
             }
           }
         } else {
@@ -371,33 +412,171 @@ class FingerprintReaderService extends ChangeNotifier {
   }
 
   /// ==============================
+  /// CARGAR HUELLAS A LA MEMORIA (ZKTeco)
+  /// ==============================
+  Future<void> _loadFingerprintsToMemory() async {
+    if (_sdkType != 'zkteco' || !_isConnected) return;
+
+    try {
+      final token = await _authService.getToken();
+      if (token == null) return;
+
+      print("⏳ Descargando huellas del servidor...");
+      final response = await http.get(
+        Uri.parse('$_baseUrl/empleados/huellas'),
+        headers: {'Authorization': token},
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> jsonResponse = jsonDecode(response.body);
+        final List<dynamic> huellasArray = jsonResponse['data'];
+
+        // Preparar llaves AES
+        final key = encrypt.Key.fromUtf8(_secureKeyStr);
+        final iv = encrypt.IV.fromUtf8(_initVectorStr);
+        final encrypter = encrypt.Encrypter(
+          encrypt.AES(key, mode: encrypt.AESMode.cbc, padding: 'PKCS7'),
+        );
+
+        int huellasCargadas = 0;
+
+        for (var item in huellasArray) {
+          final int empId = item['empl_id'];
+          final String base64Aes = item['huella_aes'];
+
+          try {
+            // 1. Desencriptar el Base64 a bytes crudos
+            final encryptedObj = encrypt.Encrypted.fromBase64(base64Aes);
+            final decryptedBytes = encrypter.decryptBytes(encryptedObj, iv: iv);
+            final Uint8List templateData = Uint8List.fromList(decryptedBytes);
+
+            // Insertar en la memoria RAM del SDK
+            final bool exito = _zktecoSDK!.addTemplateToMemory(
+              _zkDBHandle,
+              empId,
+              templateData,
+            );
+
+            if (exito) {
+              huellasCargadas++;
+            }
+          } catch (e) {
+            print("❌ Error al desencriptar/cargar huella del ID $empId: $e");
+          }
+        }
+        print(
+          "✅ $huellasCargadas huellas cargadas exitosamente en la RAM del lector.",
+        );
+        _huellasCargadasEnRam = true;
+      }
+    } catch (e) {
+      print("❌ Error de red al cargar huellas: $e");
+    }
+  }
+
+  /// ==============================
   /// MARK ATTENDANCE (OPTIMIZADO)
   /// ==============================
 
-  Future<Map<String, dynamic>?> markAttendance(Uint8List template) async {
+  // Future<Map<String, dynamic>?> markAttendance(Uint8List template) async {
+  //   final token = await _authService.getToken();
+  //   if (token == null) return null;
+
+  //   final uri = Uri.parse('$_baseUrl/empleados/marcarbiometrico');
+  //   print(template);
+  //   final response = await http.post(
+  //     uri,
+  //     headers: {
+  //       'Authorization': token,
+  //       'Content-Type': 'application/octet-stream',
+  //     },
+  //     body: template,
+  //   );
+  //   print(jsonDecode(response.body));
+  //   if (response.statusCode == 200) {
+  //     final data = jsonDecode(response.body);
+  //     await _ttsService.sayWelcome(
+  //       data["data"]["empleado"]["nombres"],
+  //       data["data"]["empleado"]["apellidos"],
+  //     );
+  //     return data;
+  //   }
+
+  //   return null;
+  // }
+
+  /// ==============================
+  /// MARK ATTENDANCE SEGURO (HMAC)
+  /// ==============================
+  Future<Map<String, dynamic>?> markAttendanceSeguro(int employeeId) async {
     final token = await _authService.getToken();
     if (token == null) return null;
 
     final uri = Uri.parse('$_baseUrl/empleados/marcarbiometrico');
-    print(template);
-    final response = await http.post(
-      uri,
-      headers: {
-        'Authorization': token,
-        'Content-Type': 'application/octet-stream',
-      },
-      body: template,
-    );
-    print(jsonDecode(response.body));
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      await _ttsService.sayWelcome(
-        data["data"]["empleado"]["nombres"],
-        data["data"]["empleado"]["apellidos"],
-      );
-      return data;
-    }
 
+    // 1. Generar Timestamp (ISO 8601 UTC)
+    final timestamp = DateTime.now().toUtc().toIso8601String();
+
+    // 2. Crear Payload y Firmar con HMAC-SHA256
+    final payload = "$employeeId|$timestamp";
+    final hmacSha256 = Hmac(sha256, utf8.encode(_secureKeyStr));
+    final digest = hmacSha256.convert(utf8.encode(payload));
+    final firmaBase64 = base64Encode(digest.bytes);
+
+    print("🚀 Enviando timbrado seguro para ID $employeeId...");
+
+    try {
+      final response = await http.post(
+        uri,
+        headers: {'Authorization': token, 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'empleado_id': employeeId,
+          'timestamp': timestamp,
+          'firma': firmaBase64,
+        }),
+      );
+
+      print("📦 Respuesta cruda del servidor: ${response.body}");
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        // Verificamos que la API Java respondió bien (200)
+        if (data['code'] == 200) {
+          final bdData = data['data']; // Este es el JSON que mandó Postgres
+
+          if (bdData != null) {
+            // Verificamos si Postgres dijo que todo salió bien
+            if (bdData['success'] == true) {
+              print("✅ Timbrado registrado exitosamente en base de datos.");
+
+              if (bdData['empleado'] != null) {
+                final empleado = bdData['empleado'];
+                final nombres = empleado['nombres'] ?? 'Empleado';
+                final apellidos = empleado['apellidos'] ?? '';
+                await _ttsService.sayWelcome(nombres, apellidos);
+              } else {
+                await _ttsService.sayWelcome("Empleado", "Registrado");
+              }
+            } else {
+              // Si Postgres dice success: false (Ej. No tiene turno)
+              final mensajeError = bdData['message'] ?? 'Error desconocido';
+              print(
+                "⚠️ Timbrado rechazado por regla de negocio: $mensajeError",
+              );
+
+              await _ttsService.sayWelcome("Error", "Consulte su turno");
+            }
+          }
+          return data;
+        } else {
+          print("⚠️ La API Java rechazó la petición: ${data['message']}");
+        }
+      } else {
+        print("❌ Error HTTP ${response.statusCode}: ${response.body}");
+      }
+    } catch (e) {
+      print("❌ Excepción en timbrado automático: $e");
+    }
     return null;
   }
 
@@ -409,11 +588,14 @@ class FingerprintReaderService extends ChangeNotifier {
 
   Future<void> setAutoListeningEnabled(bool value) async {
     _isAutoListeningEnabled = value;
-
     await ConfigService.saveAutoListeningEnabled(value);
 
-    if (_isConnected && value) {
-      startListening();
+    if (_isConnected) {
+      if (value) {
+        startListening();
+      } else if (!value) {
+        stopListening();
+      }
     }
 
     notifyListeners();
@@ -468,6 +650,13 @@ class FingerprintReaderService extends ChangeNotifier {
     }
 
     if (_isRegistering) return;
+
+    final bool estabaEscuchando = _isScanning;
+    if (estabaEscuchando) {
+      stopListening();
+      // Le damos medio segundo al lector para que apague la luz y libere la memoria
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
     _isRegistering = true;
 
     try {
@@ -570,6 +759,9 @@ class FingerprintReaderService extends ChangeNotifier {
       onRegistrationStatusChange?.call(false, e.toString());
     } finally {
       _isRegistering = false;
+      if (estabaEscuchando && _isAutoListeningEnabled) {
+        startListening();
+      }
     }
   }
 
@@ -585,8 +777,6 @@ class FingerprintReaderService extends ChangeNotifier {
     _sdkType = null;
     notifyListeners();
   }
-
-
 
   /// ==============================
   /// GETTERS
