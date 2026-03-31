@@ -19,8 +19,6 @@ class NfcPcscService extends ChangeNotifier {
 
   bool _isDisposed = false;
   Timer? _monitoringTimer;
-  final Context _context = Context(Scope.user);
-  bool _contextEstablished = false;
 
   NfcPcscService() {
     _initFromStorage();
@@ -47,39 +45,16 @@ class NfcPcscService extends ChangeNotifier {
     }
   }
 
-  Future<bool> _ensureContextEstablished() async {
-    if (_contextEstablished) return true;
-    try {
-      await _context.establish();
-      _contextEstablished = true;
-      return true;
-    } catch (e) {
-      print('❌ [NFC] No se pudo establecer contexto PC/SC: $e');
-      _contextEstablished = false;
-      return false;
-    }
-  }
-
-  Future<void> _releasePersistentContext() async {
-    if (!_contextEstablished) return;
-    try {
-      await _context.release();
-    } catch (_) {
-      // Ignorado: durante apagado del servicio el contexto puede ya estar liberado.
-    } finally {
-      _contextEstablished = false;
-    }
-  }
-
   Future<void> _checkReaderStatusSilently() async {
     if (_isDisposed || _isReading) return;
 
-    if (!await _ensureContextEstablished()) return;
-
+    final context = Context(Scope.user);
     try {
+      await context.establish();
+
       List<String> readers = [];
       try {
-        readers = await _context.listReaders();
+        readers = await context.listReaders();
       } catch (e) {
         readers = [];
       }
@@ -116,11 +91,14 @@ class NfcPcscService extends ChangeNotifier {
 
       if (stateChanged) notifyListeners();
     } catch (e) {
-      _contextEstablished = false;
       if (_isReaderConnected) {
         _isReaderConnected = false;
         notifyListeners();
       }
+    } finally {
+      try {
+        await context.release();
+      } catch (_) {}
     }
   }
 
@@ -140,7 +118,6 @@ class NfcPcscService extends ChangeNotifier {
   void dispose() {
     _isDisposed = true;
     _monitoringTimer?.cancel();
-    unawaited(_releasePersistentContext());
     super.dispose();
   }
 
@@ -157,24 +134,20 @@ class NfcPcscService extends ChangeNotifier {
 
     notifyListeners();
 
+    final context = Context(Scope.user);
+
     try {
-      if (!await _ensureContextEstablished()) {
-        throw Exception('No se pudo establecer contexto PC/SC');
-      }
+      await context.establish();
 
       final endTime = DateTime.now().add(const Duration(seconds: 30));
       bool cardReadSuccessfully = false;
-      final readStopwatch = Stopwatch()..start();
-      int waitMs = 0;
-      int connectMs = 0;
-      int transmitMs = 0;
 
-      // 2. CICLO WHILE: Permite reintentar si el usuario quita la tarjeta rápido
+      // 2. CICLO WHLE: Permite reintentar si el usuario quita la tarjeta rápido
       while (DateTime.now().isBefore(endTime) && !cardReadSuccessfully) {
         final remaining = endTime.difference(DateTime.now());
         if (remaining.inMilliseconds <= 0) break;
 
-        final waitOp = _context.waitForCard([_savedReaderName!]);
+        final waitOp = context.waitForCard([_savedReaderName!]);
         final timeoutTimer = Timer(remaining, () {
           try {
             waitOp.cancel();
@@ -183,10 +156,7 @@ class NfcPcscService extends ChangeNotifier {
 
         try {
           // Esperamos el resultado real del hardware
-          final waitStage = Stopwatch()..start();
           List<String> withCard = await waitOp.value;
-          waitStage.stop();
-          waitMs += waitStage.elapsedMilliseconds;
           timeoutTimer
               .cancel(); // Si lee la tarjeta antes, cancelamos el timer de muerte
 
@@ -195,22 +165,16 @@ class NfcPcscService extends ChangeNotifier {
           }
 
           // Conectamos a la tarjeta lo más rápido posible
-          final connectStage = Stopwatch()..start();
-          Card card = await _context.connect(
+          Card card = await context.connect(
             withCard.first,
             ShareMode.shared,
             Protocol.any,
           );
-          connectStage.stop();
-          connectMs += connectStage.elapsedMilliseconds;
 
           // Transmitimos APDU para sacar el UID
-          final transmitStage = Stopwatch()..start();
           Uint8List resp = await card.transmit(
             Uint8List.fromList([0xFF, 0xCA, 0x00, 0x00, 0x00]),
           );
-          transmitStage.stop();
-          transmitMs += transmitStage.elapsedMilliseconds;
 
           await card.disconnect(Disposition.leaveCard);
 
@@ -232,12 +196,6 @@ class NfcPcscService extends ChangeNotifier {
               "uid": uidHex,
               "id": id,
             });
-
-            readStopwatch.stop();
-            print(
-              '⏱️ [NFC] Latencia total=${readStopwatch.elapsedMilliseconds}ms '
-              '(wait=${waitMs}ms, connect=${connectMs}ms, transmit=${transmitMs}ms)',
-            );
 
             cardReadSuccessfully = true; // Rompe el ciclo
           }
@@ -269,17 +227,15 @@ class NfcPcscService extends ChangeNotifier {
       }
 
       if (!cardReadSuccessfully) {
-        readStopwatch.stop();
-        print(
-          '⏱️ [NFC] Sin lectura válida en ${readStopwatch.elapsedMilliseconds}ms '
-          '(wait=${waitMs}ms, connect=${connectMs}ms, transmit=${transmitMs}ms)',
-        );
         print('⏱️ Lectura NFC finalizada (No se detectó tarjeta válida).');
       }
     } catch (e) {
-      _contextEstablished = false;
       print('❌ Error crítico inicializando NFC: $e');
     } finally {
+      try {
+        await context.release();
+      } catch (_) {}
+
       _isReading = false;
       notifyListeners();
 

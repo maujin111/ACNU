@@ -159,7 +159,9 @@ class _DispositivosState extends State<Dispositivos> {
 
                 // Nueva sección: Múltiples Impresoras
                 if (nfcService.savedReaderName != null ||
-                    printerService.connectedPrinters.isNotEmpty) ...[
+                    printerService.connectedPrinters.isNotEmpty ||
+                    (Platform.isWindows &&
+                        fingerprintService.selectedDevice != null)) ...[
                   const SizedBox(height: 20),
                   Card(
                     margin: const EdgeInsets.all(8.0),
