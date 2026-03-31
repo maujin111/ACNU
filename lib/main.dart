@@ -215,7 +215,6 @@ class MyApp extends StatelessWidget {
                 Provider.of<AuthService>(context, listen: false),
               ),
           update: (context, authService, previous) {
-            // ✅ En lugar de crear uno nuevo, solo le actualizamos la credencial
             previous?.updateAuthService(authService);
             return previous ?? FingerprintReaderService(authService);
           },
@@ -730,6 +729,8 @@ class _MyHomePageState extends State<MyHomePage>
           final String? type =
               data['type']?.toString() ?? data['tipo']?.toString();
 
+          final dynamic receivedId = data['id'];
+
           // **NUEVO: Extraer el nombre de la impresora del mensaje**
           final String? targetPrinterName =
               data['printer']?.toString() ??
@@ -751,14 +752,14 @@ class _MyHomePageState extends State<MyHomePage>
 
           if (type.toUpperCase() == 'NFC') {
             if (Platform.isAndroid || Platform.isIOS) {
-              await nfc.startNFC();
+              nfc.startNFC();
               return;
             } else if (Platform.isWindows) {
               final nfcPcsc = Provider.of<NfcPcscService>(
                 context,
                 listen: false,
               );
-              await nfcPcsc.startNFC(webSocketService);
+              nfcPcsc.startNFC(webSocketService, receivedId);
               return;
             }
           }

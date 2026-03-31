@@ -86,12 +86,10 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                 DropdownButton<String>(
                   value: _currentFilter,
                   items: const [
+                    DropdownMenuItem(value: 'CExNA', child: Text('Sin Huella')),
                     DropdownMenuItem(
-                      value: 'CExNA',
-                      child: Text('Sin Huella'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'CExA', // Suponiendo que este es el código para 'Con Asignación'
+                      value:
+                          'CExA', // Suponiendo que este es el código para 'Con Asignación'
                       child: Text('Con Huella'),
                     ),
                   ],

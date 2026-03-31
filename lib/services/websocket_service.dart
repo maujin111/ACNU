@@ -436,7 +436,7 @@ class WebSocketService extends ChangeNotifier {
         }
       }
 
-      String baseUrl = 'ws://10.0.1.33:3300/$_token';
+      String baseUrl = 'wss://soporte.anfibius.net:3300/$_token';
       if (_lastSeenTimestamp > 0) {
         baseUrl += '?since=$_lastSeenTimestamp';
       }
@@ -571,6 +571,7 @@ class WebSocketService extends ChangeNotifier {
           );
 
           _isConnected = true;
+          _isConnecting = false;
           _reconnectAttempts = 0;
           _lastSuccessfulActivity = DateTime.now();
           _startHeartbeat();

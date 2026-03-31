@@ -29,6 +29,9 @@ class AuthService extends ChangeNotifier {
     final url = Uri.parse(
       '${ApiConstants.baseUrl}/anfibiusBack/api/usuarios/login',
     );
+
+    print(url.toString());
+
     try {
       final response = await http.post(
         url,

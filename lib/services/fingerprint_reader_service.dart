@@ -654,7 +654,6 @@ class FingerprintReaderService extends ChangeNotifier {
     final bool estabaEscuchando = _isScanning;
     if (estabaEscuchando) {
       stopListening();
-      // Le damos medio segundo al lector para que apague la luz y libere la memoria
       await Future.delayed(const Duration(milliseconds: 500));
     }
     _isRegistering = true;
@@ -679,6 +678,20 @@ class FingerprintReaderService extends ChangeNotifier {
         );
 
         if (result != null && result.template.isNotEmpty) {
+          // Comprobamos en la RAM si este dedo ya es de alguien más
+          final int matchId = _zktecoSDK!.identifyFingerprint(
+            _zkDBHandle,
+            result.template,
+          );
+
+          if (matchId > 0) {
+            // Si el ID encontrado es distinto al del empleado que estamos registrando...
+            if (matchId != employeeId) {
+              throw Exception(
+                "Este dedo ya se encuentra registrado a nombre de otro empleado (ID: $matchId).",
+              );
+            }
+          }
           // Dedo detectado y template extraído
           onFingerDetected?.call();
 
@@ -738,6 +751,22 @@ class FingerprintReaderService extends ChangeNotifier {
             );
 
             if (success) {
+              // Si la BD aceptó la huella, la guardamos localmente
+              final bool agregadoLocal = _zktecoSDK!.addTemplateToMemory(
+                _zkDBHandle,
+                employeeId,
+                finalTemplate,
+              );
+
+              if (agregadoLocal) {
+                print(
+                  "✅ Memoria RAM del lector actualizada exitosamente con la nueva huella.",
+                );
+              } else {
+                print(
+                  "⚠️ La huella se guardó en el servidor, pero hubo un fallo al insertarla en RAM.",
+                );
+              }
               onRegistrationSuccess?.call();
             } else {
               throw Exception("El servidor rechazó la huella");
