@@ -27,7 +27,7 @@ class AuthService extends ChangeNotifier {
 
   Future<bool> login(String ruc, String username, String password) async {
     final url = Uri.parse(
-      '${ApiConstants.baseUrl}/anfibiusBack/api/usuarios/login',
+      '${ApiConstants.baseUrl}/betaBack/api/usuarios/login',
     );
 
     print(url.toString());

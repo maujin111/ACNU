@@ -125,8 +125,8 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                           '${employee.persNombres} ${employee.persApellidos}',
                         ),
                         subtitle: Text(employee.persDocumento),
-                        onTap: () {
-                          Navigator.of(context).push(
+                        onTap: () async {
+                          final result = await Navigator.of(context).push(
                             MaterialPageRoute(
                               builder:
                                   (context) => FingerprintRegistrationScreen(
@@ -136,6 +136,9 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                                   ),
                             ),
                           );
+                          if (result == true) {
+                            _loadEmployees(searchTerm: _currentSearchTerm);
+                          }
                         },
                       );
                     },

@@ -15,6 +15,7 @@ import '../services/tts_service.dart';
 
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:crypto/crypto.dart';
+import '../services/api_constants.dart';
 
 class FingerprintDevice {
   final String id;
@@ -27,8 +28,6 @@ class FingerprintDevice {
 class FingerprintReaderService extends ChangeNotifier {
   AuthService _authService;
   final TTSService _ttsService = TTSService();
-
-  static const String _baseUrl = 'http://10.0.1.33:8080/anfibiusBack/api';
 
   static const String _secureKeyStr = "AnfibiusAppSecureKey2026_32bytes";
   static const String _initVectorStr = "RandomInitVec123";
@@ -423,7 +422,7 @@ class FingerprintReaderService extends ChangeNotifier {
 
       print("⏳ Descargando huellas del servidor...");
       final response = await http.get(
-        Uri.parse('$_baseUrl/empleados/huellas'),
+        Uri.parse('${ApiConstants.baseUrl}/betaBack/api/empleados/huellas'),
         headers: {'Authorization': token},
       );
 
@@ -512,7 +511,9 @@ class FingerprintReaderService extends ChangeNotifier {
     final token = await _authService.getToken();
     if (token == null) return null;
 
-    final uri = Uri.parse('$_baseUrl/empleados/marcarbiometrico');
+    final uri = Uri.parse(
+      '${ApiConstants.baseUrl}/betaBack/api/empleados/marcarbiometrico',
+    );
 
     // 1. Generar Timestamp (ISO 8601 UTC)
     final timestamp = DateTime.now().toUtc().toIso8601String();
@@ -616,7 +617,7 @@ class FingerprintReaderService extends ChangeNotifier {
     if (token == null) return false;
 
     final uri = Uri.parse(
-      '$_baseUrl/empleados/registrarbiometrico?id=$employeeId',
+      '${ApiConstants.baseUrl}/betaBack/api/empleados/registrarbiometrico?id=$employeeId',
     );
 
     print("Enviando registro de huella a: $uri");
@@ -751,22 +752,18 @@ class FingerprintReaderService extends ChangeNotifier {
             );
 
             if (success) {
-              // Si la BD aceptó la huella, la guardamos localmente
-              final bool agregadoLocal = _zktecoSDK!.addTemplateToMemory(
-                _zkDBHandle,
-                employeeId,
-                finalTemplate,
+              print(
+                "✅ Huella guardada en el servidor. Sincronizando memoria RAM profunda...",
               );
 
-              if (agregadoLocal) {
-                print(
-                  "✅ Memoria RAM del lector actualizada exitosamente con la nueva huella.",
-                );
-              } else {
-                print(
-                  "⚠️ La huella se guardó en el servidor, pero hubo un fallo al insertarla en RAM.",
-                );
-              }
+              // 👉 1. DESTRUIMOS Y RECREAMOS LA MEMORIA DEL LECTOR (Limpieza total)
+              _zktecoSDK!.dbFree(_zkDBHandle);
+              _zkDBHandle = _zktecoSDK!.dbInit();
+
+              // 👉 2. FORZAMOS LA DESCARGA DE TODAS LAS HUELLAS ACTUALIZADAS DESDE LA BD
+              _huellasCargadasEnRam = false;
+              await _loadFingerprintsToMemory();
+
               onRegistrationSuccess?.call();
             } else {
               throw Exception("El servidor rechazó la huella");

@@ -205,86 +205,93 @@ class WebSocketService extends ChangeNotifier {
     }
   }
 
+  String _extractJsonPayload(String rawMessage) {
+    final cleanMessage =
+        rawMessage
+            .replaceAll("\r", "")
+            .replaceAll("\n", " ")
+            .replaceAll("%0D", "")
+            .trim();
+
+    final historyLiveRegex = RegExp(r'^\[(HISTORIAL|LIVE)\|(\d+)\]\s(.*)');
+    final historyMatch = historyLiveRegex.firstMatch(cleanMessage);
+
+    if (historyMatch != null) {
+      _lastSeenTimestamp = int.parse(historyMatch.group(2)!);
+      return historyMatch.group(3)!.trim();
+    }
+
+    final broadcastRegex = RegExp(r'Broadcast \[.*?\]:\s*(\{.*\})');
+    final broadcastMatch = broadcastRegex.firstMatch(cleanMessage);
+    if (broadcastMatch != null && broadcastMatch.groupCount >= 1) {
+      return broadcastMatch.group(1)!.trim();
+    }
+
+    return cleanMessage;
+  }
+
+  Map<String, dynamic>? _parseMessageData(String jsonMessage) {
+    final parsedData = json.decode(jsonMessage);
+
+    if (parsedData is List && parsedData.isNotEmpty) {
+      final firstItem = parsedData.first;
+      if (firstItem is Map<String, dynamic>) {
+        return firstItem;
+      }
+      return null;
+    }
+
+    if (parsedData is Map<String, dynamic>) {
+      return parsedData;
+    }
+
+    return null;
+  }
+
+  bool _isAllowedHistoryType(Map<String, dynamic> data) {
+    final String? type = data['type']?.toString() ?? data['tipo']?.toString();
+
+    const List<String> allowedTypes = [
+      'COMANDA',
+      'PREFACTURA',
+      'VENTA',
+      'TEST',
+      'SORTEO',
+    ];
+
+    return type != null && allowedTypes.contains(type.toUpperCase());
+  }
+
   Future<void> _initFromStorage() async {
     try {
       final savedMessages = await ConfigService.loadMessages();
       if (savedMessages.isNotEmpty) {
         for (var message in savedMessages) {
           try {
-            dynamic parsedData = json.decode(message);
+            final jsonMessage = _extractJsonPayload(message);
+            final data = _parseMessageData(jsonMessage);
 
-            Map<String, dynamic> data;
-            if (parsedData is List && parsedData.isNotEmpty) {
-              data = parsedData[0];
-            } else if (parsedData is Map<String, dynamic>) {
-              data = parsedData;
-            } else {
+            if (data == null) {
+              print('⚠️ Mensaje guardado con formato no válido, omitido');
               continue;
             }
 
-            final String? type =
-                data['type']?.toString() ?? data['tipo']?.toString();
-
-            const List<String> allowedTypes = [
-              'COMANDA',
-              'PREFACTURA',
-              'VENTA',
-              'TEST',
-              'SORTEO',
-            ];
-
-            if (type != null && allowedTypes.contains(type.toUpperCase())) {
-              _messages.add(message);
-            }
-          } catch (e) {
-            print('❌ Error al validar mensaje guardado: $e');
-          }
-        }
-
-        for (var message in savedMessages) {
-          try {
-            bool shouldAddToHistory = true;
-            try {
-              dynamic parsedData = json.decode(message);
-
-              Map<String, dynamic> data;
-              if (parsedData is List && parsedData.isNotEmpty) {
-                data = parsedData[0];
-              } else if (parsedData is Map<String, dynamic>) {
-                data = parsedData;
-              } else {
-                throw FormatException('Formato de mensaje no válido');
-              }
-
+            if (!_isAllowedHistoryType(data)) {
               final String? type =
                   data['type']?.toString() ?? data['tipo']?.toString();
-
-              const List<String> allowedTypes = [
-                'COMANDA',
-                'PREFACTURA',
-                'VENTA',
-                'TEST',
-                'SORTEO',
-              ];
-
-              if (type == null || !allowedTypes.contains(type.toUpperCase())) {
-                print(
-                  '⚠️ Mensaje guardado con tipo "$type" no permitido, omitiendo del historial',
-                );
-                shouldAddToHistory = false;
-              }
-            } catch (e) {
-              print('❌ Error al validar tipo de mensaje guardado: $e');
-              shouldAddToHistory = false;
-            }
-
-            if (shouldAddToHistory) {
-              final historyItem = PrintHistoryItem.fromMessage(
-                message,
-                timestamp: DateTime.now(),
+              print(
+                '⚠️ Mensaje guardado con tipo "$type" no permitido, omitiendo del historial',
               );
-              _historyItems.add(historyItem);
+              continue;
             }
+
+            _messages.add(jsonMessage);
+
+            final historyItem = PrintHistoryItem.fromMessage(
+              jsonMessage,
+              timestamp: DateTime.now(),
+            );
+            _historyItems.add(historyItem);
           } catch (e) {
             print('Error al procesar mensaje guardado: $e');
           }
@@ -435,8 +442,8 @@ class WebSocketService extends ChangeNotifier {
           print('❌ Error activando wake lock: $e');
         }
       }
-
       String baseUrl = 'wss://soporte.anfibius.net:3300/$_token';
+      //String baseUrl = 'ws://192.168.1.5:3300/$_token';
       if (_lastSeenTimestamp > 0) {
         baseUrl += '?since=$_lastSeenTimestamp';
       }
@@ -936,22 +943,7 @@ class WebSocketService extends ChangeNotifier {
         return;
       }
 
-      final historyLiveRegex = RegExp(r'^\[(HISTORIAL|LIVE)\|(\d+)\]\s(.*)');
-      final historyMatch = historyLiveRegex.firstMatch(cleanMessage);
-
-      String jsonMessage = cleanMessage;
-
-      if (historyMatch != null) {
-        _lastSeenTimestamp = int.parse(historyMatch.group(2)!);
-        jsonMessage = historyMatch.group(3)!;
-        print('✅ Prefijo limpiado. Nuevo timestamp: $_lastSeenTimestamp');
-      } else {
-        final broadcastRegex = RegExp(r'Broadcast \[.*?\]:\s*(\{.*\})');
-        final match = broadcastRegex.firstMatch(cleanMessage);
-        if (match != null && match.groupCount >= 1) {
-          jsonMessage = match.group(1)!;
-        }
-      }
+      final jsonMessage = _extractJsonPayload(cleanMessage);
 
       print('Mensaje procesado: [$cleanMessage]');
       print('JSON extraído: [$jsonMessage]');
@@ -994,7 +986,7 @@ class WebSocketService extends ChangeNotifier {
       }
 
       if (shouldAddToHistory) {
-        _messages.add(cleanMessage);
+        _messages.add(jsonMessage);
 
         try {
           final historyItem = PrintHistoryItem.fromMessage(jsonMessage);
@@ -1006,7 +998,7 @@ class WebSocketService extends ChangeNotifier {
           print('Error al crear elemento de historial: $e');
         }
 
-        ConfigService.addMessage(cleanMessage);
+        ConfigService.addMessage(jsonMessage);
       }
 
       if (onNewMessage != null) {

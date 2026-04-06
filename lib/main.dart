@@ -526,7 +526,6 @@ class _MyHomePageState extends State<MyHomePage>
             }
           }
           break;
-
         case AppLifecycleState.resumed:
           // App vuelve a primer plano o laptop sale de suspensión
           // En Windows, esperar un poco para que el sistema se estabilice después de suspensión
@@ -643,6 +642,7 @@ class _MyHomePageState extends State<MyHomePage>
       print('⚠️ Widget no montado, abortando setup de auto print');
       return;
     }
+
     final webSocketService = Provider.of<WebSocketService>(
       context,
       listen: false,
@@ -709,11 +709,19 @@ class _MyHomePageState extends State<MyHomePage>
         print(
           '🖨️ [${DateTime.now()}] Procesando impresión automática para mensaje: ${jsonMessage.length > 100 ? "${jsonMessage.substring(0, 100)}..." : jsonMessage}',
         );
+        String cleanMessage = jsonMessage.trim();
+        if (cleanMessage.startsWith('[')) {
+          final int closeBracketIndex = cleanMessage.indexOf(']');
+          if (closeBracketIndex != -1) {
+            // Extraemos todo lo que está después del ']'
+            cleanMessage = cleanMessage.substring(closeBracketIndex + 1).trim();
+          }
+        }
 
         // Validar tipos permitidos antes de procesar
         try {
           // Intentar parsear el JSON, manejando posibles arrays
-          dynamic parsedData = json.decode(jsonMessage);
+          dynamic parsedData = json.decode(cleanMessage);
 
           // Si viene como array, tomar el primer elemento
           Map<String, dynamic> data;
@@ -728,8 +736,6 @@ class _MyHomePageState extends State<MyHomePage>
           // Buscar el tipo en ambos campos posibles: 'type' y 'tipo'
           final String? type =
               data['type']?.toString() ?? data['tipo']?.toString();
-
-          final dynamic receivedId = data['id'];
 
           // **NUEVO: Extraer el nombre de la impresora del mensaje**
           final String? targetPrinterName =
@@ -759,7 +765,7 @@ class _MyHomePageState extends State<MyHomePage>
                 context,
                 listen: false,
               );
-              nfcPcsc.startNFC(webSocketService, receivedId);
+              nfcPcsc.startNFC(webSocketService);
               return;
             }
           }

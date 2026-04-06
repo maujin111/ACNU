@@ -121,7 +121,7 @@ class NfcPcscService extends ChangeNotifier {
     super.dispose();
   }
 
-  Future<void> startNFC(WebSocketService webSocketService, dynamic id) async {
+  Future<void> startNFC(WebSocketService webSocketService, {dynamic id}) async {
     if (_isReading) return;
     if (!_isReaderConnected || _savedReaderName == null) {
       print('❌ No se puede iniciar lectura: Lector no conectado.');
@@ -129,9 +129,7 @@ class NfcPcscService extends ChangeNotifier {
     }
 
     _isReading = true;
-
     _monitoringTimer?.cancel();
-
     notifyListeners();
 
     final context = Context(Scope.user);
@@ -142,23 +140,26 @@ class NfcPcscService extends ChangeNotifier {
       final endTime = DateTime.now().add(const Duration(seconds: 30));
       bool cardReadSuccessfully = false;
 
-      // 2. CICLO WHLE: Permite reintentar si el usuario quita la tarjeta rápido
+      // CICLO WHILE: Permite reintentar si el usuario quita la tarjeta rápido
       while (DateTime.now().isBefore(endTime) && !cardReadSuccessfully) {
         final remaining = endTime.difference(DateTime.now());
         if (remaining.inMilliseconds <= 0) break;
 
         final waitOp = context.waitForCard([_savedReaderName!]);
-        final timeoutTimer = Timer(remaining, () {
-          try {
-            waitOp.cancel();
-          } catch (_) {}
-        });
 
         try {
-          // Esperamos el resultado real del hardware
-          List<String> withCard = await waitOp.value;
-          timeoutTimer
-              .cancel(); // Si lee la tarjeta antes, cancelamos el timer de muerte
+          // 👉 EL DOBLE CANDADO: Forzamos a Dart a no quedarse atascado
+          List<String> withCard = await waitOp.value.timeout(
+            remaining,
+            onTimeout: () {
+              // Si Dart agota el tiempo, matamos la operación de hardware a la fuerza
+              try {
+                waitOp.cancel();
+              } catch (_) {}
+              // Lanzamos error para salir del 'await' congelado
+              throw TimeoutException('NFC Timeout de Dart alcanzado');
+            },
+          );
 
           if (withCard.isEmpty) {
             continue;
@@ -191,24 +192,26 @@ class NfcPcscService extends ChangeNotifier {
 
             print('✅ NFC Leído exitosamente: $uidHex');
 
-            webSocketService.sendMessage({
+            // Armamos el payload con el ID dinámico
+            final Map<String, dynamic> responsePayload = {
               "type": "RES_NFC",
               "uid": uidHex,
-              "id": id,
-            });
+            };
+            if (id != null) responsePayload["id"] = id;
 
+            webSocketService.sendMessage(responsePayload);
             cardReadSuccessfully = true; // Rompe el ciclo
           }
         } catch (innerError) {
-          timeoutTimer.cancel();
+          // Por si el error no vino del timeout, liberamos hardware
           try {
             waitOp.cancel();
-          } catch (_) {} // Liberamos el hardware por precaución
+          } catch (_) {}
 
           final errorStr = innerError.toString().toLowerCase();
 
-          // Si el error fue provocado porque el timer agotó los 30 segundos
-          if (errorStr.contains('cancel') || errorStr.contains('cancelled')) {
+          // Si el error fue provocado porque se agotó el tiempo límite
+          if (errorStr.contains('timeout') || errorStr.contains('cancel')) {
             break;
           }
           // Si la tarjeta fue removida muy rápido (Tap & Go fallido)
@@ -216,9 +219,7 @@ class NfcPcscService extends ChangeNotifier {
               errorStr.contains('no smartcard') ||
               errorStr.contains('unresponsive')) {
             print('⚠️ Tarjeta retirada muy rápido. Acérquela de nuevo...');
-            await Future.delayed(
-              const Duration(milliseconds: 300),
-            ); // Pequeña pausa antes del reintento
+            await Future.delayed(const Duration(milliseconds: 300));
           } else {
             print('❌ Error interno en lectura NFC: $innerError');
             break;
@@ -227,19 +228,21 @@ class NfcPcscService extends ChangeNotifier {
       }
 
       if (!cardReadSuccessfully) {
-        print('⏱️ Lectura NFC finalizada (No se detectó tarjeta válida).');
+        print(
+          '⏱️ Lectura NFC finalizada (No se detectó tarjeta válida en 30s).',
+        );
       }
     } catch (e) {
       print('❌ Error crítico inicializando NFC: $e');
     } finally {
       try {
-        await context.release();
+        // 👉 PROTECCIÓN EXTRA: Evitar que liberar el contexto congele la app
+        await context.release().timeout(const Duration(seconds: 2));
       } catch (_) {}
 
       _isReading = false;
       notifyListeners();
 
-      // 4. REANUDAMOS EL MONITOREO DE FONDO
       _startMonitoring();
     }
   }
