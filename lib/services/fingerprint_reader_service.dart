@@ -43,6 +43,7 @@ class FingerprintReaderService extends ChangeNotifier {
   bool _isScanning = false;
   bool _isLooping = false; // Nueva flag para evitar hilos duplicados
   bool _huellasCargadasEnRam = false;
+  bool _wasLoggedIn = false;
 
   /// ==============================
   /// SDKs
@@ -70,11 +71,33 @@ class FingerprintReaderService extends ChangeNotifier {
   /// ==============================
 
   FingerprintReaderService(this._authService) {
+    _wasLoggedIn = _authService.authToken != null;
     _init();
   }
 
   void updateAuthService(AuthService authService) {
     _authService = authService;
+
+    final bool isCurrentlyLoggedIn = _authService.authToken != null;
+
+    if (!_wasLoggedIn && isCurrentlyLoggedIn) {
+      _loadFingerprintsToMemory();
+    }
+
+    if (_wasLoggedIn && !isCurrentlyLoggedIn) {
+      _huellasCargadasEnRam = false;
+      _lastFingerprintImage = null;
+
+      if (_isConnected && _sdkType == 'zkteco' && _zkDBHandle != null) {
+        final exito = _zktecoSDK!.clearMemory(_zkDBHandle);
+        if (exito) {
+          print('🧹 Memoria RAM del lector formateada por seguridad.');
+        } else {
+          print('⚠️ Fallo al intentar vaciar la memoria del lector.');
+        }
+      }
+    }
+    _wasLoggedIn = isCurrentlyLoggedIn;
   }
 
   @override
@@ -422,7 +445,7 @@ class FingerprintReaderService extends ChangeNotifier {
 
       print("⏳ Descargando huellas del servidor...");
       final response = await http.get(
-        Uri.parse('${ApiConstants.baseUrl}/betaBack/api/empleados/huellas'),
+        Uri.parse('${ApiConstants.baseUrl}/anfibiusBack/api/empleados/huellas'),
         headers: {'Authorization': token},
       );
 
@@ -512,7 +535,7 @@ class FingerprintReaderService extends ChangeNotifier {
     if (token == null) return null;
 
     final uri = Uri.parse(
-      '${ApiConstants.baseUrl}/betaBack/api/empleados/marcarbiometrico',
+      '${ApiConstants.baseUrl}/anfibiusBack/api/empleados/marcarbiometrico',
     );
 
     // 1. Generar Timestamp (ISO 8601 UTC)
@@ -617,7 +640,7 @@ class FingerprintReaderService extends ChangeNotifier {
     if (token == null) return false;
 
     final uri = Uri.parse(
-      '${ApiConstants.baseUrl}/betaBack/api/empleados/registrarbiometrico?id=$employeeId',
+      '${ApiConstants.baseUrl}/anfibiusBack/api/empleados/registrarbiometrico?id=$employeeId',
     );
 
     print("Enviando registro de huella a: $uri");

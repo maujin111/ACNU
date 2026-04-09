@@ -173,6 +173,11 @@ class ZKTecoSDK {
     )
   >('ZKFPM_DBMerge');
 
+  late final int Function(Pointer<Void>) dbClear = _lib.lookupFunction<
+    Int32 Function(Pointer<Void>),
+    int Function(Pointer<Void>)
+  >('ZKFPM_DBClear');
+
   // ============================================================
   // METODOS AUXILIARES
   // ============================================================
@@ -349,6 +354,17 @@ class ZKTecoSDK {
       calloc.free(templatePtr);
       calloc.free(fidPtr);
       calloc.free(scorePtr);
+    }
+  }
+
+  /// Vacía todas las huellas de la memoria RAM del lector
+  bool clearMemory(Pointer<Void> dbHandle) {
+    try {
+      final result = dbClear(dbHandle);
+      return result == 0; // 0 significa éxito
+    } catch (e) {
+      print("Error vaciando memoria del lector: $e");
+      return false;
     }
   }
 }

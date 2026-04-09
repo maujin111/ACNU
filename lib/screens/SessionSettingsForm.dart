@@ -1,6 +1,6 @@
 import 'package:anfibius_uwu/services/auth_service.dart';
 import 'package:anfibius_uwu/services/config_service.dart';
-
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -34,14 +34,15 @@ class SessionSettingsFormState extends State<SessionSettingsForm> {
   }
 
   Future<void> _loadSessionData() async {
-    final ruc = await ConfigService.loadRuc();
-    final username = await ConfigService.loadUsername();
-    if (ruc != null) {
-      _companyIdController.text = ruc;
-    }
-    if (username != null) {
-      _userController.text = username;
-    }
+    final prefs = await SharedPreferences.getInstance();
+    final ruc = prefs.getString('auth_ruc') ?? await ConfigService.loadRuc();
+    final username =
+        prefs.getString('auth_user') ?? await ConfigService.loadUsername();
+
+    usuario = username;
+    if (ruc != null) _companyIdController.text = ruc;
+    if (username != null) _userController.text = username;
+    if (mounted) setState(() {});
   }
 
   Future<void> _login() async {
@@ -51,14 +52,13 @@ class SessionSettingsFormState extends State<SessionSettingsForm> {
       _errorMessage = null;
     });
 
-    final ruc = _companyIdController.text;
-    final username = _userController.text;
-    final password = _passwordController.text;
+    final ruc = _companyIdController.text.trim();
+    final username = _userController.text.trim();
+    final password = _passwordController.text.trim();
 
     if (ruc.isEmpty || username.isEmpty || password.isEmpty) {
-      if (!mounted) return;
       setState(() {
-        _errorMessage = 'Please fill in all fields.';
+        _errorMessage = 'Por favor llene todos los campos.';
         _isLoading = false;
       });
       return;
@@ -68,30 +68,28 @@ class SessionSettingsFormState extends State<SessionSettingsForm> {
       final success = await authService.login(ruc, username, password);
       if (mounted) {
         if (success) {
+          // Guardamos también en ConfigService por retrocompatibilidad con otras pantallas
           await ConfigService.saveRuc(ruc);
           await ConfigService.saveUsername(username);
-          usuario= username;
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Login successful!')));
+          usuario = username;
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('¡Inicio de sesión exitoso!'),
+              backgroundColor: Colors.green,
+            ),
+          );
         } else {
-          setState(() {
-            _errorMessage = 'Invalid credentials or server error.';
-          });
+          setState(
+            () =>
+                _errorMessage = 'Credenciales inválidas o error del servidor.',
+          );
         }
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = 'An error occurred: $e';
-        });
-      }
+      if (mounted) setState(() => _errorMessage = 'Ocurrió un error: $e');
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -99,9 +97,10 @@ class SessionSettingsFormState extends State<SessionSettingsForm> {
     final authService = Provider.of<AuthService>(context, listen: false);
     await authService.logout();
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Logged out successfully!')));
+      _passwordController.clear(); // Limpiamos la clave visualmente
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('¡Cierre de sesión exitoso!')),
+      );
     }
   }
 
@@ -109,6 +108,7 @@ class SessionSettingsFormState extends State<SessionSettingsForm> {
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context);
     final bool isLoggedIn = authService.authToken != null;
+
     return Scaffold(
       body: Center(
         child: Container(
@@ -131,42 +131,64 @@ class SessionSettingsFormState extends State<SessionSettingsForm> {
                   ),
                 ),
 
-                if (isLoggedIn) ...[
-                  SizedBox(height: 30),
+                if (authService.isAutoLoggingIn) ...[
+                  const SizedBox(height: 50),
+                  const Center(
+                    child: Column(
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text('Iniciando sesión automáticamente...'),
+                      ],
+                    ),
+                  ),
+                ] else if (isLoggedIn) ...[
+                  const SizedBox(height: 30),
                   Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                         const SizedBox(height: 16),
-                         const Icon(
+                        const Icon(
                           Icons.check_circle,
                           color: Colors.green,
                           size: 64,
                         ),
-                         const SizedBox(height: 16),
-                         const Text(
+                        const SizedBox(height: 16),
+                        const Text(
                           'Estado: Conectado',
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                         const SizedBox(height: 8),
-
-                        Text('Usuario: ${usuario}'),
+                        const SizedBox(height: 8),
+                        Text('Usuario: ${usuario ?? _userController.text}'),
                         const SizedBox(height: 24),
+                        ElevatedButton.icon(
+                          onPressed: _logout,
+                          icon: const Icon(Icons.logout),
+                          label: const Text('Cerrar Sesión'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 32,
+                              vertical: 12,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                  SizedBox(height: 30),
                 ] else ...[
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
                     child: TextFormField(
                       controller: _companyIdController,
                       decoration: const InputDecoration(
-                        labelText: 'ID de empresa',
+                        labelText: 'ID de empresa (RUC)',
                         border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.business),
                       ),
                     ),
                   ),
@@ -177,6 +199,7 @@ class SessionSettingsFormState extends State<SessionSettingsForm> {
                       decoration: const InputDecoration(
                         labelText: 'Usuario',
                         border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.person),
                       ),
                     ),
                   ),
@@ -188,6 +211,7 @@ class SessionSettingsFormState extends State<SessionSettingsForm> {
                       decoration: const InputDecoration(
                         labelText: 'Contraseña',
                         border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.lock),
                       ),
                     ),
                   ),
@@ -196,30 +220,30 @@ class SessionSettingsFormState extends State<SessionSettingsForm> {
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Text(
                         _errorMessage!,
-                        style: const TextStyle(color: Colors.red),
+                        style: const TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
                     ),
-                  
-                ],
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0),
-                  child:
-                      _isLoading
-                          ? const Center(child: CircularProgressIndicator())
-                          : authService.authToken == null
-                          ? ElevatedButton(
-                            onPressed: _login,
-                            child: const Text('Iniciar Sesión'),
-                          )
-                          : ElevatedButton(
-                            onPressed: _logout,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red,
-                              foregroundColor: Color(0xFFFFEBEE),
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child:
+                        _isLoading
+                            ? const Center(child: CircularProgressIndicator())
+                            : ElevatedButton.icon(
+                              onPressed: _login,
+                              icon: const Icon(Icons.login),
+                              label: const Text('Iniciar Sesión'),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                              ),
                             ),
-                            child: const Text('Cerrar Sesión'),
-                          ),
-                ),
+                  ),
+                ],
               ],
             ),
           ),

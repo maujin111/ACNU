@@ -60,6 +60,9 @@ dependencies:
   
   # Splash screen
   flutter_native_splash: 2.4.4
+
+  # Encriptación
+  crypto: ^3.0.2
   encrypt: ^5.0.3
 
 dev_dependencies:

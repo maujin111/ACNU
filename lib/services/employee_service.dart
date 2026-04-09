@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:anfibius_uwu/models/employee.dart';
 import 'package:anfibius_uwu/services/auth_service.dart';
 import 'package:anfibius_uwu/services/api_constants.dart';
+import 'package:anfibius_uwu/main.dart'; // Importante para el navigatorKey
 
 class EmployeeService {
   final AuthService _authService;
@@ -18,20 +19,38 @@ class EmployeeService {
   }) async {
     final token = await _authService.getToken();
     if (token == null) {
-      throw Exception('Authentication token not found. Please log in.');
+      throw Exception('Token de autenticación no encontrado.');
     }
 
-    final Map<String, String> queryParams = {
-      'id': id?.toString() ?? '',
-      'limit': limit?.toString() ?? '10',
-      'offset': offset?.toString() ?? '0',
-      'busqueda': searchTerm ?? '',
-      'tipoconsul': searchType ?? 'CExNA',
-    };
+    Uri uri;
 
-    final uri = Uri.parse(
-      '${ApiConstants.baseUrl}/anfibiusBack/api/empleados',
-    ).replace(queryParameters: queryParams);
+    if (searchType == 'CExA' || searchType == 'CExNA') {
+      // Recuerda: CExNA = Con Huella, CExA = Sin Huella
+      final bool conHuella = (searchType == 'CExNA');
+
+      final Map<String, String> queryParams = {
+        'con_huella': conHuella.toString(),
+        'busqueda': searchTerm ?? '',
+        'limit': limit?.toString() ?? '10',
+        'offset': offset?.toString() ?? '0',
+      };
+
+      uri = Uri.parse(
+        '${ApiConstants.baseUrl}/anfibiusBack/api/empleados/filtro-biometria',
+      ).replace(queryParameters: queryParams);
+    } else {
+      final Map<String, String> queryParams = {
+        'id': id?.toString() ?? '',
+        'limit': limit?.toString() ?? '10',
+        'offset': offset?.toString() ?? '0',
+        'busqueda': searchTerm ?? '',
+        'tipoconsul': searchType ?? '',
+      };
+
+      uri = Uri.parse(
+        '${ApiConstants.baseUrl}/anfibiusBack/api/empleados',
+      ).replace(queryParameters: queryParams);
+    }
 
     print('Fetching employees from: $uri');
 
@@ -42,17 +61,27 @@ class EmployeeService {
       );
 
       if (response.statusCode == 200) {
-        print(response.body);
         final responseData = json.decode(response.body);
         if (responseData['status'] == 'ok' && responseData['data'] is List) {
           return (responseData['data'] as List)
               .map((e) => Employee.fromJson(e))
               .toList();
         }
-        throw Exception('Failed to load employees: ${responseData['message']}');
+        throw Exception('Error cargando empleados: ${responseData['message']}');
+      } else if (response.statusCode == 401) {
+        print(
+          '⚠️ El servidor rechazó el Token (401). Forzando cierre de sesión...',
+        );
+
+        await _authService.logout();
+        navigatorKey.currentState?.pushNamedAndRemoveUntil(
+          '/',
+          (route) => false,
+        );
+        throw Exception('Credenciales inválidas o revocadas por el servidor.');
       } else {
         throw Exception(
-          'Failed to load employees: ${response.statusCode} - ${response.body}',
+          'Fallo de conexión: ${response.statusCode} - ${response.body}',
         );
       }
     } catch (e) {
