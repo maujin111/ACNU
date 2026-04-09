@@ -36,7 +36,7 @@ class EmployeeService {
       };
 
       uri = Uri.parse(
-        '${ApiConstants.baseUrl}/anfibiusBack/api/empleados/filtro-biometria',
+        '${ApiConstants.baseUrl}/empleados/filtro-biometria',
       ).replace(queryParameters: queryParams);
     } else {
       final Map<String, String> queryParams = {
@@ -48,7 +48,7 @@ class EmployeeService {
       };
 
       uri = Uri.parse(
-        '${ApiConstants.baseUrl}/anfibiusBack/api/empleados',
+        '${ApiConstants.baseUrl}/empleados',
       ).replace(queryParameters: queryParams);
     }
 

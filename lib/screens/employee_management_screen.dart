@@ -206,7 +206,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                           title: Text(
                             '${employee.persNombres} ${employee.persApellidos}',
                           ),
-                          subtitle: Text('ID: ${employee.persDocumento}'),
+                          subtitle: Text('DOC: ${employee.persDocumento}'),
                           onTap: () async {
                             // ==========================================
                             // 🛡️ VALIDACIÓN DE HARDWARE ANTES DE ENTRAR

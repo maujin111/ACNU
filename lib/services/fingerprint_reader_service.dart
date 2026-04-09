@@ -407,7 +407,7 @@ class FingerprintReaderService extends ChangeNotifier {
                   print(
                     "❌ Huella no reconocida (No hace match con ninguna guardada).",
                   );
-                  // Opcional: _ttsService.sayWelcome("Empleado", "No reconocido");
+                  _ttsService.sayFingerprintNotRecognized();
                 }
               }
             }
@@ -445,7 +445,7 @@ class FingerprintReaderService extends ChangeNotifier {
 
       print("⏳ Descargando huellas del servidor...");
       final response = await http.get(
-        Uri.parse('${ApiConstants.baseUrl}/anfibiusBack/api/empleados/huellas'),
+        Uri.parse('${ApiConstants.baseUrl}/empleados/huellas'),
         headers: {'Authorization': token},
       );
 
@@ -535,7 +535,7 @@ class FingerprintReaderService extends ChangeNotifier {
     if (token == null) return null;
 
     final uri = Uri.parse(
-      '${ApiConstants.baseUrl}/anfibiusBack/api/empleados/marcarbiometrico',
+      '${ApiConstants.baseUrl}/empleados/marcarbiometrico',
     );
 
     // 1. Generar Timestamp (ISO 8601 UTC)
@@ -564,36 +564,43 @@ class FingerprintReaderService extends ChangeNotifier {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        // Verificamos que la API Java respondió bien (200)
         if (data['code'] == 200) {
-          final bdData = data['data']; // Este es el JSON que mandó Postgres
+          final bdData = data['data'];
 
           if (bdData != null) {
-            // Verificamos si Postgres dijo que todo salió bien
             if (bdData['success'] == true) {
               print("✅ Timbrado registrado exitosamente en base de datos.");
 
               if (bdData['empleado'] != null) {
                 final empleado = bdData['empleado'];
-                final nombres = empleado['nombres'] ?? 'Empleado';
+                final nombres = empleado['nombres'] ?? '';
                 final apellidos = empleado['apellidos'] ?? '';
-                await _ttsService.sayWelcome(nombres, apellidos);
+
+                // 👉 1. Leemos si el empleado llegó tarde desde la BD
+                final bool estaMultado = bdData['multado'] == true;
+
+                // 👉 2. Usamos el sayWelcome pasándole si está multado o no
+                await _ttsService.sayWelcome(
+                  nombres,
+                  apellidos,
+                  multado: estaMultado,
+                );
               } else {
-                await _ttsService.sayWelcome("Empleado", "Registrado");
+                await _ttsService.say("Asistencia registrada correctamente.");
               }
             } else {
-              // Si Postgres dice success: false (Ej. No tiene turno)
-              final mensajeError = bdData['message'] ?? 'Error desconocido';
-              print(
-                "⚠️ Timbrado rechazado por regla de negocio: $mensajeError",
-              );
+              // 👉 3. Si Postgres rechaza el timbrado (Ej. Ya timbró, no tiene turno)
+              final mensajeError = bdData['message'] ?? 'Error de validación';
+              print("⚠️ Timbrado rechazado: $mensajeError");
 
-              await _ttsService.sayWelcome("Error", "Consulte su turno");
+              // Hacemos que la computadora hable el error exacto que mandó la BD
+              await _ttsService.sayError(mensajeError);
             }
           }
           return data;
         } else {
           print("⚠️ La API Java rechazó la petición: ${data['message']}");
+          await _ttsService.sayError("Error en el servidor");
         }
       } else {
         print("❌ Error HTTP ${response.statusCode}: ${response.body}");
@@ -640,7 +647,7 @@ class FingerprintReaderService extends ChangeNotifier {
     if (token == null) return false;
 
     final uri = Uri.parse(
-      '${ApiConstants.baseUrl}/anfibiusBack/api/empleados/registrarbiometrico?id=$employeeId',
+      '${ApiConstants.baseUrl}/empleados/registrarbiometrico?id=$employeeId',
     );
 
     print("Enviando registro de huella a: $uri");

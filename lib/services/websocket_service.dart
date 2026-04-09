@@ -442,8 +442,8 @@ class WebSocketService extends ChangeNotifier {
           print('❌ Error activando wake lock: $e');
         }
       }
-      // String baseUrl = 'wss://soporte.anfibius.net:3300/$_token';
-      String baseUrl = 'ws://192.168.1.5:3300/$_token';
+      String baseUrl = 'wss://soporte.anfibius.net:3300/$_token';
+      // String baseUrl = 'ws://192.168.1.5:3300/$_token';
       if (_lastSeenTimestamp > 0) {
         baseUrl += '?since=$_lastSeenTimestamp';
       }

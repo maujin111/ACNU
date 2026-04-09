@@ -128,9 +128,7 @@ class AuthService extends ChangeNotifier {
     String username,
     String password,
   ) async {
-    final url = Uri.parse(
-      '${ApiConstants.baseUrl}/anfibiusBack/api/usuarios/login',
-    );
+    final url = Uri.parse('${ApiConstants.baseUrl}/usuarios/login');
     try {
       final response = await http.post(
         url,
