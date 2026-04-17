@@ -45,6 +45,8 @@ class FingerprintReaderService extends ChangeNotifier {
   bool _huellasCargadasEnRam = false;
   bool _wasLoggedIn = false;
 
+  final Map<int, DateTime> _ultimosTimbrados = {};
+
   /// ==============================
   /// SDKs
   /// ==============================
@@ -394,8 +396,18 @@ class FingerprintReaderService extends ChangeNotifier {
                 );
 
                 if (matchId > 0) {
-                  print("✅ Huella reconocida! Empleado ID: $matchId");
+                  final now = DateTime.now();
+                  if (_ultimosTimbrados.containsKey(matchId)) {
+                    final ultimoTimbrado = _ultimosTimbrados[matchId]!;
+                    final diferenciaSegundos =
+                        now.difference(ultimoTimbrado).inSeconds;
+                    if (diferenciaSegundos < 5) {
+                      continue;
+                    }
+                  }
+                  _ultimosTimbrados[matchId] = now;
 
+                  print("✅ Huella reconocida! Empleado ID: $matchId");
                   // Enviamos el timbrado seguro
                   markAttendanceSeguro(matchId).then((response) {
                     if (response != null) {
@@ -534,9 +546,7 @@ class FingerprintReaderService extends ChangeNotifier {
     final token = await _authService.getToken();
     if (token == null) return null;
 
-    final uri = Uri.parse(
-      '${ApiConstants.baseUrl}/empleados/marcarbiometrico',
-    );
+    final uri = Uri.parse('${ApiConstants.baseUrl}/empleados/marcarbiometrico');
 
     // 1. Generar Timestamp (ISO 8601 UTC)
     final timestamp = DateTime.now().toUtc().toIso8601String();

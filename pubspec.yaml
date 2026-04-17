@@ -113,7 +113,7 @@ msix_config:
   display_name: AnfibiusConnect
   publisher_display_name: Corp. Anfibius
   identity_name: Corp.Anfibius.AnfibiusConnect
-  msix_version: 2.0.2.0
+  msix_version: 2.0.4.0
   logo_path: assets/icon/anficon.png
   capabilities: 'internetClient,removableStorage'
   store: true

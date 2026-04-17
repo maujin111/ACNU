@@ -97,7 +97,7 @@ class TTSService {
   }
 
   Future<void> sayFingerprintNotRecognized() async {
-    await sayError('Huella no reconocida. Por favor, intente nuevamente.');
+    await sayError('Huella no reconocida.');
   }
 
   Future<void> say(String mensaje) async {
