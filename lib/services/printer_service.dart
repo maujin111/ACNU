@@ -97,7 +97,7 @@ class PrinterService extends ChangeNotifier {
   Timer? _connectionCheckTimer;
   // Callback para notificar cambios en el estado de conexión
   Function(bool isConnected, String? printerName)? onConnectionChanged;
-  
+
   // Flag para saber si el servicio está pausado (Windows en suspensión)
   bool _isPaused = false;
 
@@ -232,7 +232,9 @@ class PrinterService extends ChangeNotifier {
   void clearQueue(PrinterType type) {
     final queue = _printQueues[type];
     if (queue != null) {
-      print('🗑️ [COLA] Limpiando cola para ${type}. Trabajos descartados: ${queue.length}');
+      print(
+        '🗑️ [COLA] Limpiando cola para ${type}. Trabajos descartados: ${queue.length}',
+      );
       // Completar todos los trabajos pendientes con false
       while (queue.isNotEmpty) {
         final job = queue.removeFirst();
@@ -382,53 +384,51 @@ class PrinterService extends ChangeNotifier {
     try {
       bool isConnectedNow = false;
 
-      // Intentar verificar si la impresora está conectada según su tipo
       switch (selectedPrinter!.typePrinter) {
         case PrinterType.bluetooth:
-          // Para Bluetooth, utilizamos el estado actual del stream
           isConnectedNow = (_currentStatus == BTStatus.connected);
           break;
 
         case PrinterType.usb:
-          // Para USB, utilizamos el estado actual del stream USB
-          isConnectedNow = (_currentUsbStatus == USBStatus.connected);
+          // 🛡️ FIX WINDOWS: El stream de USB a veces no se dispara en Desktop.
+          // Si logramos conectarnos manualmente y estamos en Windows,
+          // mantenemos el estado true a menos que ocurra un error de desconexión real.
+          if (Platform.isWindows && _isConnected) {
+            isConnectedNow = true;
+          } else {
+            isConnectedNow = (_currentUsbStatus == USBStatus.connected);
+          }
           break;
 
         case PrinterType.network:
-          // Para impresoras de red, intentamos una "ping" básica
           try {
-            // 🛡️ Proteger la llamada a connect con try-catch
             await printerManager.connect(
               type: PrinterType.network,
               model: TcpPrinterInput(
                 ipAddress: selectedPrinter!.address!,
                 port: int.tryParse(selectedPrinter!.port ?? '9100') ?? 9100,
-                timeout: const Duration(
-                  seconds: 2,
-                ), // Timeout corto para verificación
+                timeout: const Duration(seconds: 2),
               ),
             );
             isConnectedNow = true;
           } catch (e) {
-            print('❌ Impresora de red no disponible: ${e.toString()}');
             isConnectedNow = false;
           }
           break;
       }
 
-      // Si el estado cambió, actualizar y notificar
+      // Si el estado cambió, actualizar y notificar a la UI
       if (isConnectedNow != _isConnected) {
         _isConnected = isConnectedNow;
         notifyListeners();
         print(
           isConnectedNow
-              ? '✅ Impresora conectada: ${selectedPrinter!.deviceName}'
-              : '❌ Impresora desconectada: ${selectedPrinter!.deviceName}',
+              ? '✅ Impresora en línea: ${selectedPrinter!.deviceName}'
+              : '❌ Impresora fuera de línea: ${selectedPrinter!.deviceName}',
         );
       }
     } catch (e) {
       print('❌ Error al verificar estado de la impresora: $e');
-      // No propagar el error para evitar crashes
     }
   }
 
@@ -1140,9 +1140,7 @@ class PrinterService extends ChangeNotifier {
 
     // Procesar el siguiente trabajo en la cola (si hay)
     if (queue.isNotEmpty) {
-      print(
-        '🔄 [COLA] Procesando siguiente trabajo para ${printerType}...',
-      );
+      print('🔄 [COLA] Procesando siguiente trabajo para ${printerType}...');
       // Usar scheduleMicrotask para evitar stack overflow en colas largas
       scheduleMicrotask(() => _processQueue(printerType));
     } else {
@@ -1161,7 +1159,9 @@ class PrinterService extends ChangeNotifier {
       return false;
     }
 
-    print('🖨️ [EXEC] Ejecutando impresión en: $printerName (${printer.typePrinter})');
+    print(
+      '🖨️ [EXEC] Ejecutando impresión en: $printerName (${printer.typePrinter})',
+    );
     print('📋 [EXEC] Parámetros de impresora:');
     print('   - Nombre: ${printer.deviceName}');
     print('   - Tipo: ${printer.typePrinter}');
@@ -1196,7 +1196,9 @@ class PrinterService extends ChangeNotifier {
       switch (printer.typePrinter) {
         case PrinterType.usb:
           try {
-            print('🔌 [EXEC] Conectando a impresora USB específica: $printerName');
+            print(
+              '🔌 [EXEC] Conectando a impresora USB específica: $printerName',
+            );
             print(
               '   → VendorID: ${printer.vendorId}, ProductID: ${printer.productId}',
             );
@@ -1920,7 +1922,7 @@ class PrinterService extends ChangeNotifier {
   void pauseService() {
     print('⏸️ [PrinterService] Pausando servicio de impresoras...');
     _isPaused = true;
-    
+
     // Cancelar timer de verificación para evitar ACCESS_VIOLATION en FFI
     try {
       _connectionCheckTimer?.cancel();
@@ -1930,13 +1932,19 @@ class PrinterService extends ChangeNotifier {
       print('⚠️ [PrinterService] Error cancelando timer: $e');
     }
   }
-  
+
+  /// Reanudar el servicio (cuando Windows sale de suspensión)
   /// Reanudar el servicio (cuando Windows sale de suspensión)
   void resumeService() {
     print('▶️ [PrinterService] Reanudando servicio de impresoras...');
     _isPaused = false;
-    
-    // Reiniciar timer de verificación después de un delay
+
+    if (selectedPrinter != null && !_isConnected) {
+      print("🔄 Reactivando puerto de impresora tras suspensión...");
+      _connectToPrinter();
+    }
+
+    // Reiniciar timer de verificación después de un delay para que el puerto respire
     Future.delayed(const Duration(seconds: 3), () {
       if (!_isPaused) {
         print('🔄 [PrinterService] Reiniciando timer de verificación...');
@@ -1949,10 +1957,10 @@ class PrinterService extends ChangeNotifier {
   @override
   void dispose() {
     print('🛑 [PrinterService] Limpiando recursos...');
-    
+
     // Marcar como pausado para detener operaciones
     _isPaused = true;
-    
+
     // Cancelar suscripciones
     try {
       _subscription?.cancel();
@@ -1960,14 +1968,14 @@ class PrinterService extends ChangeNotifier {
     } catch (e) {
       print('⚠️ [PrinterService] Error cancelando subscription: $e');
     }
-    
+
     try {
       _subscriptionBtStatus?.cancel();
       _subscriptionBtStatus = null;
     } catch (e) {
       print('⚠️ [PrinterService] Error cancelando BT status subscription: $e');
     }
-    
+
     try {
       _subscriptionUsbStatus?.cancel();
       _subscriptionUsbStatus = null;
@@ -1991,7 +1999,7 @@ class PrinterService extends ChangeNotifier {
         print('⚠️ [PrinterService] Error desconectando impresora: $e');
       }
     }
-    
+
     // 🆕 Limpiar listas para evitar memory leaks
     devices.clear();
 

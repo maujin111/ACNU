@@ -704,7 +704,6 @@ class _MyHomePageState extends State<MyHomePage>
 
     // Configurar el callback para imprimir automáticamente cuando llegue un mensaje
     webSocketService.onNewMessage = (String jsonMessage) async {
-      // 🛡️ PROTECCIÓN: Envolver TODO en try-catch para evitar crashes
       try {
         print(
           '🖨️ [${DateTime.now()}] Procesando impresión automática para mensaje: ${jsonMessage.length > 100 ? "${jsonMessage.substring(0, 100)}..." : jsonMessage}',

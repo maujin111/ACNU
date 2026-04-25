@@ -916,20 +916,14 @@ class WebSocketService extends ChangeNotifier {
   Function(String)? onNewMessage;
 
   void _addMessage(String message) {
-    if (_isDisposed) {
-      print(
-        '⚠️ [${DateTime.now()}] Intento de agregar mensaje en servicio disposed',
-      );
-      return;
-    }
+    if (_isDisposed) return;
 
     _lastSuccessfulActivity = DateTime.now();
 
-    if (message.trim().isEmpty) {
-      return;
-    }
+    if (message.trim().isEmpty) return;
 
     try {
+      // 1. Limpieza básica de caracteres
       String cleanMessage =
           message
               .replaceAll("\r", "")
@@ -939,32 +933,54 @@ class WebSocketService extends ChangeNotifier {
 
       if (cleanMessage.toLowerCase() == 'ping' ||
           cleanMessage.toLowerCase() == 'pong') {
-        print('📡 Mensaje de heartbeat recibido: $cleanMessage');
-        return;
+        return; // Ignoramos pings puros
       }
 
-      final jsonMessage = _extractJsonPayload(cleanMessage);
+      // 2. Extraer el JSON real ignorando las cabeceras de red
+      String jsonMessage = cleanMessage;
 
-      print('Mensaje procesado: [$cleanMessage]');
-      print('JSON extraído: [$jsonMessage]');
+      final historyLiveRegex = RegExp(r'^\[(HISTORIAL|LIVE)\|(\d+)\]\s(.*)');
+      final historyMatch = historyLiveRegex.firstMatch(cleanMessage);
 
-      bool shouldAddToHistory = true;
+      if (historyMatch != null) {
+        _lastSeenTimestamp = int.parse(historyMatch.group(2)!);
+        jsonMessage = historyMatch.group(3)!;
+      } else {
+        final broadcastRegex = RegExp(r'Broadcast \[.*?\]:\s*(\{.*\}|\[.*\])');
+        final match = broadcastRegex.firstMatch(cleanMessage);
+        if (match != null && match.groupCount >= 1) {
+          jsonMessage = match.group(1)!;
+        }
+      }
+
+      print('📥 JSON extraído para procesar: $jsonMessage');
+
+      // 3. ENVÍO DIRECTO A LA IMPRESORA (main.dart)
+      // Siempre enviamos el JSON extraído; main.dart decidirá si es un ticket válido o basura.
+      if (onNewMessage != null) {
+        try {
+          onNewMessage!(jsonMessage);
+        } catch (e) {
+          logger.error('Error al procesar impresión', error: e);
+        }
+      }
+
+      // 4. LÓGICA DE HISTORIAL 
       try {
         dynamic parsedData = json.decode(jsonMessage);
-
         Map<String, dynamic> data;
+
         if (parsedData is List && parsedData.isNotEmpty) {
           data = parsedData[0];
         } else if (parsedData is Map<String, dynamic>) {
           data = parsedData;
         } else {
-          throw FormatException('Formato de mensaje no válido');
+          throw FormatException('El mensaje no es List ni Map');
         }
 
         final String? type =
             data['type']?.toString() ?? data['tipo']?.toString();
-
-        const List<String> allowedTypes = [
+        const List<String> allowedHistoryTypes = [
           'COMANDA',
           'PREFACTURA',
           'VENTA',
@@ -972,49 +988,25 @@ class WebSocketService extends ChangeNotifier {
           'SORTEO',
         ];
 
-        if (type == null || !allowedTypes.contains(type.toUpperCase())) {
-          print(
-            '⚠️ Tipo de documento "$type" no permitido para historial. Solo se permiten: ${allowedTypes.join(", ")}',
-          );
-          shouldAddToHistory = false;
-        } else {
-          print('✅ Tipo de documento válido para historial: $type');
-        }
-      } catch (e) {
-        print('❌ Error al validar tipo de mensaje para historial: $e');
-        shouldAddToHistory = false;
-      }
+        if (type != null && allowedHistoryTypes.contains(type.toUpperCase())) {
+          _messages.add(cleanMessage);
+          ConfigService.addMessage(cleanMessage);
 
-      if (shouldAddToHistory) {
-        _messages.add(jsonMessage);
-
-        try {
           final historyItem = PrintHistoryItem.fromMessage(jsonMessage);
           _historyItems.add(historyItem);
-          print(
-            'Historial añadido: ID=${historyItem.id}, Tipo=${historyItem.tipo}',
-          );
-        } catch (e) {
-          print('Error al crear elemento de historial: $e');
         }
-
-        ConfigService.addMessage(jsonMessage);
-      }
-
-      if (onNewMessage != null) {
-        print('Enviando mensaje a impresora: [$jsonMessage]');
-        try {
-          onNewMessage!(jsonMessage);
-        } catch (e, stackTrace) {
-          print('❌ [${DateTime.now()}] Error en callback onNewMessage: $e');
-          print('📋 Stack trace: $stackTrace');
-        }
+      } catch (e) {
+        // Fallar al guardar el historial es aceptable, no debe detener la app
+        print('ℹ️ Mensaje ignorado para el historial: $e');
       }
 
       _safeNotifyListeners();
     } catch (e, stackTrace) {
-      print('❌ [${DateTime.now()}] Error crítico en _addMessage: $e');
-      print('📋 Stack trace: $stackTrace');
+      logger.error(
+        'Error crítico en _addMessage',
+        error: e,
+        stackTrace: stackTrace,
+      );
     }
   }
 
