@@ -6,6 +6,7 @@ import 'package:anfibius_uwu/services/employee_service.dart';
 import 'package:anfibius_uwu/services/auth_service.dart';
 import 'package:anfibius_uwu/services/fingerprint_reader_service.dart';
 import 'package:anfibius_uwu/screens/employee_management_screen.dart';
+import 'package:flutter/foundation.dart'; // Nos permite usar kDebugMode
 
 class Nomina extends StatefulWidget {
   const Nomina({super.key});
@@ -106,6 +107,35 @@ class _NominaState extends State<Nomina> {
     final bool isLoggedIn = authService.authToken != null;
 
     return Scaffold(
+      floatingActionButton:
+          kDebugMode
+              ? FloatingActionButton.extended(
+                onPressed: () async {
+                  // Cambia este número por el ID de un empleado real en tu BD
+                  final int empleadoIdDePrueba = 4;
+
+                  print(
+                    "🧪 MODO PRUEBA: Simulando huella del empleado ID: $empleadoIdDePrueba",
+                  );
+
+                  // Disparamos la misma función que usaría el lector real
+                  final response = await fpService.markAttendanceSeguro(
+                    empleadoIdDePrueba,
+                  );
+
+                  if (response != null) {
+                    print("🧪 PRUEBA EXITOSA: $response");
+                  }
+                },
+                backgroundColor: Colors.purple,
+                icon: const Icon(Icons.fingerprint, color: Colors.white),
+                label: const Text(
+                  "Simular Huella",
+                  style: TextStyle(color: Colors.white),
+                ),
+              )
+              : null,
+
       body: Center(
         child: Container(
           height: double.infinity,

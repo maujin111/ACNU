@@ -585,15 +585,13 @@ class FingerprintReaderService extends ChangeNotifier {
                 final empleado = bdData['empleado'];
                 final nombres = empleado['nombres'] ?? '';
                 final apellidos = empleado['apellidos'] ?? '';
-
-                // 👉 1. Leemos si el empleado llegó tarde desde la BD
-                final bool estaMultado = bdData['multado'] == true;
-
-                // 👉 2. Usamos el sayWelcome pasándole si está multado o no
-                await _ttsService.sayWelcome(
-                  nombres,
-                  apellidos,
-                  multado: estaMultado,
+                final bool multado = bdData['multado'] == true;
+                final String tipo = bdData['tipo'] ?? '';
+                await _ttsService.sayMarca(
+                  tipo: tipo,
+                  nombres: nombres,
+                  apellidos: apellidos,
+                  multado: multado,
                 );
               } else {
                 await _ttsService.say("Asistencia registrada correctamente.");

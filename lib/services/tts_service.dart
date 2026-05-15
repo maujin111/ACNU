@@ -21,7 +21,7 @@ class TTSService {
 
       String? bestSpanishVoice;
 
-      // 2. Buscar inteligentemente un paquete de Español
+      // 2. Buscar un paquete de Español
       for (var lang in installedLanguages) {
         String langStr = lang.toString().toLowerCase();
 
@@ -33,7 +33,7 @@ class TTSService {
         }
       }
 
-      // 3. Aplicar el idioma o dejar un aviso
+      // 3. Aplicar el idioma
       if (bestSpanishVoice != null) {
         await _flutterTts.setLanguage(bestSpanishVoice);
         developer.log(
@@ -61,6 +61,67 @@ class TTSService {
   void setEnabled(bool enabled) {
     _isEnabled = enabled;
     developer.log('🔊 TTS ${enabled ? "HABILITADO" : "DESHABILITADO"}');
+  }
+
+  Future<void> sayMarca({
+    required String tipo, // EM | SA | EA | SF
+    required String nombres,
+    required String apellidos,
+    bool multado = false,
+  }) async {
+    switch (tipo) {
+      case 'EM':
+        await _sayEntrada(nombres, apellidos, multado: multado);
+        break;
+      case 'SA':
+        await _saySalidaAlmuerzo(nombres, apellidos);
+        break;
+      case 'EA':
+        await _sayEntradaAlmuerzo(nombres, apellidos, multado: multado);
+        break;
+      case 'SF':
+        await _saySalidaFinal(nombres, apellidos);
+        break;
+      default:
+        await _speak('Asistencia registrada. $nombres $apellidos.');
+    }
+  }
+
+  // EM — Entrada al trabajo
+  Future<void> _sayEntrada(
+    String nombre,
+    String apellido, {
+    bool multado = false,
+  }) async {
+    final saludo = _greetingForHour();
+    var mensaje = '$saludo, $nombre $apellido. Entrada registrada.';
+    if (multado) {
+      mensaje += ' Se ha generado una multa por ingreso tardío.';
+    }
+    await _speak(mensaje);
+  }
+
+  // SA — Salida a almuerzo
+  Future<void> _saySalidaAlmuerzo(String nombre, String apellido) async {
+    await _speak('Salida a almuerzo registrada. $nombre $apellido.');
+  }
+
+  // EA — Regreso de almuerzo
+  Future<void> _sayEntradaAlmuerzo(
+    String nombre,
+    String apellido, {
+    bool multado = false,
+  }) async {
+    var mensaje = 'Regreso de almuerzo registrado. $nombre $apellido.';
+    if (multado) {
+      mensaje += ' Se ha generado una multa por retorno tardío.';
+    }
+    await _speak(mensaje);
+  }
+
+  // SF — Salida final del día
+  Future<void> _saySalidaFinal(String nombre, String apellido) async {
+    await _speak('Hasta luego, $nombre $apellido.');
   }
 
   Future<void> sayWelcome(
