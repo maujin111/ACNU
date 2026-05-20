@@ -25,7 +25,7 @@ class EmployeeService {
     Uri uri;
 
     if (searchType == 'CExA' || searchType == 'CExNA') {
-      // Recuerda: CExNA = Con Huella, CExA = Sin Huella
+      // CExNA = Con Huella, CExA = Sin Huella
       final bool conHuella = (searchType == 'CExNA');
 
       final Map<String, String> queryParams = {

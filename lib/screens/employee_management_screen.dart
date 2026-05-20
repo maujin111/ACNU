@@ -189,6 +189,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                         }
 
                         final employee = _employees[index];
+
                         return ListTile(
                           leading: CircleAvatar(
                             backgroundColor:
@@ -203,10 +204,41 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                                       : Colors.orange,
                             ),
                           ),
+
+                          // Título: Pedimos el displayNombre y la bandera lógica directo al empleado
                           title: Text(
-                            '${employee.persNombres} ${employee.persApellidos}',
+                            employee.displayNombre,
+                            style: TextStyle(
+                              color:
+                                  employee.isNameMissing
+                                      ? Colors.grey.shade500
+                                      : null,
+                              fontStyle:
+                                  employee.isNameMissing
+                                      ? FontStyle.italic
+                                      : FontStyle.normal,
+                              fontWeight:
+                                  employee.isNameMissing
+                                      ? FontWeight.normal
+                                      : FontWeight.w500,
+                            ),
                           ),
-                          subtitle: Text('DOC: ${employee.persDocumento}'),
+
+                          // Subtítulo: Pedimos el documento formateado
+                          subtitle: Text(
+                            'DOC: ${employee.displayDocumento}',
+                            style: TextStyle(
+                              color:
+                                  employee.isDocMissing
+                                      ? Colors.grey.shade500
+                                      : null,
+                              fontStyle:
+                                  employee.isDocMissing
+                                      ? FontStyle.italic
+                                      : FontStyle.normal,
+                            ),
+                          ),
+
                           onTap: () async {
                             // ==========================================
                             // 🛡️ VALIDACIÓN DE HARDWARE ANTES DE ENTRAR
